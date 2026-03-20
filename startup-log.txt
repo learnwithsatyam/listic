@@ -1,0 +1,82 @@
+﻿[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +15ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPassportModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPlatformsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[33m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [33m   WARN[39m [38;5;3m[StorageService] [39m[33mAZURE_STORAGE_CONNECTION_STRING not set ΓÇö using local filesystem storage[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mStorageModule dependencies initialized[39m[38;5;3m +664ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:32 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mJwtModule dependencies initialized[39m[38;5;3m +0ms[39m
+node : (node:25936) Warning: SECURITY WARNING: The SSL modes 'prefer', 
+'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+At line:1 char:1
++ node dist/main.js 2>&1 | Out-File d:\satyam_ideas\Listic\startup-log. ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:25936) Wa... 'verify-full'. 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these 
+modes will adopt standard libpq semantics, which have weaker security 
+guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 
+'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode 
+definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:25936) DeprecationWarning: Calling client.query() when the client is 
+already executing a query is deprecated and will be removed in pg@9.0. Use 
+async/await or an external async flow control mechanism instead.
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmCoreModule dependencies initialized[39m[38;5;3m +2420ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mUsersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mImagesModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +23ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/register, POST} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mImagesController {/api/images}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/images/projects, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/images/generate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/images/projects, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/images/projects/:id, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mPlatformsController {/api/platforms}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/platforms, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/platforms/:slug, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +2ms[39m
+[31m[Nest] 25936  - [39m15/03/2026, 5:24:35 pm [31m  ERROR[39m 
+[38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already 
+in use :::3000[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (D:\satyam_ideas\Listic\node_modules\@nestjs\platf
+orm-express\adapters\express-adapter.js:95:32)
+    at 
+D:\satyam_ideas\Listic\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen 
+(D:\satyam_ideas\Listic\node_modules\@nestjs\core\nest-application.js:173:16)
+    at process.processTicksAndRejections 
+(node:internal/process/task_queues:103:5)
+    at async bootstrap (D:\satyam_ideas\Listic\apps\api\dist\main.js:25:5) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v24.11.1

@@ -1,0 +1,28 @@
+﻿[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +142ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTypeOrmModule dependencies initialized[39m[38;5;3m +6ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPassportModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPlatformsModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +6ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +1ms[39m
+[33m[Nest] 28276  - [39m14/03/2026, 10:35:28 pm [33m   WARN[39m [38;5;3m[StorageService] [39m[33mAZURE_STORAGE_CONNECTION_STRING not set ΓÇö storage will fail at runtime[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:29 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mBullModule dependencies initialized[39m[38;5;3m +995ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:29 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mStorageModule dependencies initialized[39m[38;5;3m +20ms[39m
+[32m[Nest] 28276  - [39m14/03/2026, 10:35:29 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mJwtModule dependencies initialized[39m[38;5;3m +0ms[39m
+node : D:\satyam_ideas\Listic\apps\api\dist\images\replicate.service.js:24
+At line:1 char:47
++ ... ation d:\satyam_ideas\Listic\apps\api; node dist/main.js 2>&1 | Out-F ...
++                                            ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\satyam_ideas...e.service.js:24 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        this.replicate = new Replicate({
+                         ^
+
+TypeError: Replicate is not a constructor
+    at ReplicateService.initReplicate 
+(D:\satyam_ideas\Listic\apps\api\dist\images\replicate.service.js:24:26)
+
+Node.js v24.11.1

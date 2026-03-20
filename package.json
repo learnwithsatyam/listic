@@ -1,0 +1,25 @@
+{
+  "name": "listic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-powered e-commerce product image generator",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:mobile": "npm run start --workspace=apps/mobile",
+    "dev:web": "npm run web --workspace=apps/mobile",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:mobile": "npm run build --workspace=apps/mobile",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1"
+  }
+}
