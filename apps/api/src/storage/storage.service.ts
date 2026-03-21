@@ -1,37 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BlobServiceClient } from '@azure/storage-blob';
+import { ContainerClient } from '@azure/storage-blob';
 import { v4 as uuid } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/** Which Azure container to target */
+export type StorageBucket = 'originals' | 'generated';
+
 @Injectable()
 export class StorageService {
-  private readonly blobServiceClient: BlobServiceClient | null = null;
-  private readonly containerName: string;
   private readonly logger = new Logger(StorageService.name);
   private readonly useLocal: boolean;
   private readonly localDir: string;
   private readonly port: string;
 
-  constructor(private readonly config: ConfigService) {
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
+  /** Per-container clients built from individual SAS URLs */
+  private readonly containerClients: Partial<Record<StorageBucket, ContainerClient>> = {};
 
-    if (connectionString) {
-      this.blobServiceClient =
-        BlobServiceClient.fromConnectionString(connectionString);
+  constructor(private readonly config: ConfigService) {
+    const originalsSasUrl = this.config.get<string>('AZURE_SAS_URL_ORIGINALS', '');
+    const generatedSasUrl = this.config.get<string>('AZURE_SAS_URL_GENERATED', '');
+
+    if (originalsSasUrl && generatedSasUrl) {
+      this.containerClients.originals = new ContainerClient(originalsSasUrl);
+      this.containerClients.generated = new ContainerClient(generatedSasUrl);
       this.useLocal = false;
-      this.logger.log('Using Azure Blob Storage');
+      this.logger.log('Using Azure Blob Storage (per-container SAS URLs)');
     } else {
       this.useLocal = true;
-      this.logger.warn(
-        'AZURE_STORAGE_CONNECTION_STRING not set — using local filesystem storage',
-      );
+      if (!originalsSasUrl && !generatedSasUrl) {
+        this.logger.warn(
+          'No Azure Storage SAS URLs set — using local filesystem storage',
+        );
+      } else {
+        this.logger.warn(
+          'Only one Azure SAS URL set — both AZURE_SAS_URL_ORIGINALS and AZURE_SAS_URL_GENERATED are required. Falling back to local storage.',
+        );
+      }
     }
 
-    this.containerName = this.config.get('AZURE_STORAGE_CONTAINER', 'listic');
     this.port = this.config.get('PORT', '3000');
 
     // Local storage directory (relative to project root)
@@ -41,12 +49,22 @@ export class StorageService {
     }
   }
 
+  private getContainerClient(bucket: StorageBucket): ContainerClient {
+    const client = this.containerClients[bucket];
+    if (!client) throw new Error(`No Azure container configured for bucket: ${bucket}`);
+    return client;
+  }
+
   private getLocalUrl(filePath: string): string {
     const relativePath = path.relative(this.localDir, filePath).replace(/\\/g, '/');
     return `http://localhost:${this.port}/api/uploads/${relativePath}`;
   }
 
-  async uploadFile(file: Express.Multer.File, prefix: string): Promise<string> {
+  async uploadFile(
+    file: Express.Multer.File,
+    prefix: string,
+    bucket: StorageBucket = 'originals',
+  ): Promise<string> {
     if (this.useLocal) {
       const ext = file.originalname.split('.').pop() || 'jpg';
       const filename = `${uuid()}.${ext}`;
@@ -57,10 +75,7 @@ export class StorageService {
       return this.getLocalUrl(filePath);
     }
 
-    const containerClient = this.blobServiceClient!.getContainerClient(
-      this.containerName,
-    );
-    await containerClient.createIfNotExists({ access: 'blob' });
+    const containerClient = this.getContainerClient(bucket);
 
     const ext = file.originalname.split('.').pop() || 'jpg';
     const blobName = `${prefix}/${uuid()}.${ext}`;
@@ -73,7 +88,11 @@ export class StorageService {
     return blockBlobClient.url;
   }
 
-  async uploadFromUrl(sourceUrl: string, prefix: string): Promise<string> {
+  async uploadFromUrl(
+    sourceUrl: string,
+    prefix: string,
+    bucket: StorageBucket = 'generated',
+  ): Promise<string> {
     let buffer: Buffer;
 
     if (sourceUrl.startsWith('data:')) {
@@ -95,10 +114,7 @@ export class StorageService {
       return this.getLocalUrl(filePath);
     }
 
-    const containerClient = this.blobServiceClient!.getContainerClient(
-      this.containerName,
-    );
-    await containerClient.createIfNotExists({ access: 'blob' });
+    const containerClient = this.getContainerClient(bucket);
 
     const blobName = `${prefix}/${uuid()}.png`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
@@ -110,7 +126,7 @@ export class StorageService {
     return blockBlobClient.url;
   }
 
-  async deleteBlob(blobUrl: string): Promise<void> {
+  async deleteBlob(blobUrl: string, bucket: StorageBucket = 'generated'): Promise<void> {
     if (this.useLocal) {
       // Extract path from local URL and delete
       const urlPath = new URL(blobUrl).pathname.replace('/api/uploads/', '');
@@ -123,33 +139,73 @@ export class StorageService {
 
     const url = new URL(blobUrl);
     const blobName = url.pathname.split('/').slice(2).join('/');
-    const containerClient = this.blobServiceClient!.getContainerClient(
-      this.containerName,
-    );
+    const containerClient = this.getContainerClient(bucket);
     await containerClient.getBlockBlobClient(blobName).deleteIfExists();
   }
 
   /**
-   * Returns a URL usable by external services (e.g. Replicate).
-   * For Azure, returns the original public URL.
-   * For local storage, reads the file and returns a base64 data URI.
+   * Upload a raw buffer (e.g. post-processed image) to storage.
    */
-  resolveExternalUrl(url: string): string {
-    if (!this.useLocal) return url;
+  async uploadBuffer(
+    buffer: Buffer,
+    prefix: string,
+    contentType: string = 'image/png',
+    bucket: StorageBucket = 'generated',
+  ): Promise<string> {
+    const ext = contentType.includes('jpeg') ? 'jpg' : 'png';
 
-    // Convert local URL → file path → base64 data URI
+    if (this.useLocal) {
+      const filename = `${uuid()}.${ext}`;
+      const dir = path.join(this.localDir, prefix);
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, filename);
+      fs.writeFileSync(filePath, buffer);
+      return this.getLocalUrl(filePath);
+    }
+
+    const containerClient = this.getContainerClient(bucket);
+
+    const blobName = `${prefix}/${uuid()}.${ext}`;
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: contentType },
+    });
+
+    return blockBlobClient.url;
+  }
+
+  /**
+   * Returns a base64 data URI for any stored image.
+   * Gemini SDK requires inline image data, so we always convert to data URI.
+   */
+  async resolveExternalUrl(url: string): Promise<string> {
+    if (this.useLocal) {
+      // Convert local URL → file path → base64 data URI
+      try {
+        const urlPath = new URL(url).pathname.replace('/api/uploads/', '');
+        const filePath = path.join(this.localDir, urlPath);
+        const buffer = fs.readFileSync(filePath);
+        const ext = path.extname(filePath).replace('.', '').toLowerCase();
+        const mime = ext === 'png' ? 'image/png'
+          : ext === 'webp' ? 'image/webp'
+          : 'image/jpeg';
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+      } catch (err) {
+        this.logger.error(`Failed to read local file for data URI: ${err}`);
+        throw err;
+      }
+    }
+
+    // Azure: download blob and convert to base64 data URI
     try {
-      const urlPath = new URL(url).pathname.replace('/api/uploads/', '');
-      const filePath = path.join(this.localDir, urlPath);
-      const buffer = fs.readFileSync(filePath);
-      const ext = path.extname(filePath).replace('.', '').toLowerCase();
-      const mime = ext === 'png' ? 'image/png'
-        : ext === 'webp' ? 'image/webp'
-        : 'image/jpeg';
-      return `data:${mime};base64,${buffer.toString('base64')}`;
+      const response = await fetch(url);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const contentType = response.headers.get('content-type') || 'image/png';
+      return `data:${contentType};base64,${buffer.toString('base64')}`;
     } catch (err) {
-      this.logger.error(`Failed to read local file for data URI: ${err}`);
-      return url; // fallback
+      this.logger.error(`Failed to download Azure blob for data URI: ${err}`);
+      throw err;
     }
   }
 

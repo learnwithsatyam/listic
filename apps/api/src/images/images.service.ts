@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ImageProject, GeneratedImage } from './entities/image-project.entity';
 import { ImagenService } from './imagen.service';
+import { ImageProcessingService } from './image-processing.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { PlatformsService } from '../platforms/platforms.service';
@@ -23,6 +24,7 @@ export class ImagesService {
     @InjectRepository(GeneratedImage)
     private readonly generatedImageRepo: Repository<GeneratedImage>,
     private readonly imagenService: ImagenService,
+    private readonly imageProcessingService: ImageProcessingService,
     private readonly storageService: StorageService,
     private readonly usersService: UsersService,
     private readonly platformsService: PlatformsService,
@@ -91,7 +93,7 @@ export class ImagesService {
     const imageTypes = this.getImageTypes(project.isWearable);
     const primaryPlatform = project.targetPlatforms[0] || 'amazon';
 
-    const externalImageUrl = this.storageService.resolveExternalUrl(
+    const externalImageUrl = await this.storageService.resolveExternalUrl(
       project.originalImageUrl,
     );
 
@@ -116,9 +118,17 @@ export class ImagesService {
 
         const specs = this.platformsService.getSpecs(primaryPlatform);
 
+        // Post-process: resize and optimize for platform compliance
+        const processedBuffer = await this.postProcessImage(storedUrl, specs);
+        const finalUrl = await this.storageService.uploadBuffer(
+          processedBuffer,
+          `processed/${userId}/${project.id}`,
+          'image/png',
+        );
+
         const generatedImage = this.generatedImageRepo.create({
           projectId: project.id,
-          imageUrl: storedUrl,
+          imageUrl: finalUrl,
           imageType,
           platform: primaryPlatform,
           width: specs.dimensions.width,
@@ -168,6 +178,29 @@ export class ImagesService {
       types.push('angle');
     }
     return types.slice(0, 6);
+  }
+
+  /**
+   * Download a stored image and run it through platform-specific
+   * post-processing (resize, background, optimize).
+   */
+  private async postProcessImage(
+    imageUrl: string,
+    specs: import('../platforms/platform-specs').PlatformSpec,
+  ): Promise<Buffer> {
+    const resolved = await this.storageService.resolveExternalUrl(imageUrl);
+    let buffer: Buffer;
+
+    if (resolved.startsWith('data:')) {
+      const match = resolved.match(/^data:[^;]+;base64,(.+)$/);
+      if (!match) throw new Error('Invalid data URI');
+      buffer = Buffer.from(match[1], 'base64');
+    } else {
+      const res = await fetch(resolved);
+      buffer = Buffer.from(await res.arrayBuffer());
+    }
+
+    return this.imageProcessingService.processForPlatform(buffer, specs);
   }
 
   /** Retry with exponential backoff on 429 rate-limit responses. */
