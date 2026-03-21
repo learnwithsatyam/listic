@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ImagesController } from './images.controller';
 import { ImagesService } from './images.service';
 import { ImagenService } from './imagen.service';
+import { ImageProcessingService } from './image-processing.service';
 import {
   ImageProject,
   GeneratedImage,
@@ -19,7 +20,7 @@ import { PlatformsModule } from '../platforms/platforms.module';
     PlatformsModule,
   ],
   controllers: [ImagesController],
-  providers: [ImagesService, ImagenService],
+  providers: [ImagesService, ImagenService, ImageProcessingService],
   exports: [ImagesService],
 })
 export class ImagesModule {}
