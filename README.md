@@ -252,7 +252,7 @@ Managed by **TypeORM** with `synchronize: true` in development. Entities auto-cr
 
 - JWT tokens are HS256-signed, valid for 7 days
 - Passwords hashed with bcrypt (12 salt rounds)
-- New users receive **10 free credits**
+- New users receive **3 free credits**
 
 ### Images (`/api/images`) — All require JWT
 
@@ -404,7 +404,7 @@ Triggered by the `AZURE_STORAGE_CONNECTION_STRING` env var — if empty, falls b
 flowchart LR
     subgraph Register
         R1[Email + Password] --> R2[bcrypt hash<br>12 rounds]
-        R2 --> R3[Create User<br>10 free credits]
+        R2 --> R3[Create User<br>3 free credits]
         R3 --> R4[Sign JWT<br>HS256 · 7d]
         R4 --> R5[Return token + userId]
     end
@@ -424,7 +424,7 @@ flowchart LR
 - Transport: `Authorization: Bearer {token}`
 
 ### Credit System
-- New users: **10 free credits**
+- New users: **3 free credits**
 - Cost: **1 credit per generation** (generates 6 images)
 - Deduction: Atomic SQL `UPDATE users SET creditsRemaining = creditsRemaining - 1 WHERE id = :id AND creditsRemaining > 0`
 - Addition: Atomic SQL `UPDATE users SET creditsRemaining = creditsRemaining + N WHERE id = :id`

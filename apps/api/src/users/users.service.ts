@@ -21,7 +21,7 @@ export class UsersService {
   async create(data: { email: string; passwordHash: string; name?: string }): Promise<User> {
     const user = this.usersRepo.create({
       ...data,
-      creditsRemaining: 10, // free starter credits
+      creditsRemaining: 3, // free starter credits
     });
     return this.usersRepo.save(user);
   }

@@ -2,10 +2,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY apps/api/package.json apps/api/package-lock.json* ./
+COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 
-COPY apps/api/ ./
+COPY . ./
 RUN npm run build
 
 FROM node:20-alpine AS runner

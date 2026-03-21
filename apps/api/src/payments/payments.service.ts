@@ -18,9 +18,9 @@ export interface CreditTier {
 }
 
 export const CREDIT_TIERS: CreditTier[] = [
-  { slug: 'starter', name: 'Starter', credits: 5, priceInr: 99 },
-  { slug: 'popular', name: 'Popular', credits: 15, priceInr: 249 },
-  { slug: 'pro', name: 'Pro', credits: 50, priceInr: 699 },
+  { slug: 'starter', name: 'Starter', credits: 5, priceInr: 199 },
+  { slug: 'popular', name: 'Popular', credits: 15, priceInr: 499 },
+  { slug: 'pro', name: 'Pro', credits: 50, priceInr: 1499 },
 ];
 
 @Injectable()
