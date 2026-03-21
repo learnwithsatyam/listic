@@ -17,7 +17,7 @@ const PLATFORMS = [
 export default function HomeScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
-  const { credits, fetchCredits } = useCreditsStore();
+  const { credits, error: creditsError, fetchCredits } = useCreditsStore();
 
   useEffect(() => { fetchCredits(); }, []);
 
@@ -37,9 +37,11 @@ export default function HomeScreen() {
                 Hello
                 <Text style={styles.greetingAccent}>{' '}there</Text>
               </Text>
-              <Pressable style={styles.creditsChip} onPress={() => router.push('/purchase')}>
-                <Ionicons name="diamond" size={14} color={colors.accent} />
-                <Text style={styles.creditsChipText}>{credits ?? '—'} credits</Text>
+              <Pressable style={styles.creditsChip} onPress={() => creditsError ? fetchCredits() : router.push('/purchase')}>
+                <Ionicons name="diamond" size={14} color={creditsError ? colors.error : colors.accent} />
+                <Text style={[styles.creditsChipText, creditsError && { color: colors.error }]}>
+                  {creditsError ? 'Tap to retry' : `${credits ?? '—'} credits`}
+                </Text>
               </Pressable>
             </View>
             <Text style={styles.subtitle}>

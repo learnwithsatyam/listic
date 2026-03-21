@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
+  Pressable,
   StyleSheet,
   Animated,
 } from 'react-native';
@@ -127,13 +128,30 @@ export default function GenerateScreen() {
   }, [id]);
 
   if (error) {
+    const isNoCredits = error.toLowerCase().includes('no credits');
     return (
       <View style={styles.container}>
         <View style={styles.errorIcon}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+          <Ionicons
+            name={isNoCredits ? 'diamond-outline' : 'alert-circle-outline'}
+            size={48}
+            color={isNoCredits ? colors.accent : colors.error}
+          />
         </View>
-        <Text style={styles.errorTitle}>Generation Failed</Text>
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={styles.errorTitle}>
+          {isNoCredits ? 'No Credits Remaining' : 'Generation Failed'}
+        </Text>
+        <Text style={styles.errorText}>
+          {isNoCredits ? 'Purchase credits to generate product images.' : error}
+        </Text>
+        <Pressable
+          style={styles.errorBtn}
+          onPress={() => isNoCredits ? router.replace('/purchase') : router.back()}
+        >
+          <Text style={styles.errorBtnText}>
+            {isNoCredits ? 'Buy Credits' : 'Go Back'}
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -272,5 +290,17 @@ const styles = StyleSheet.create({
     fontSize: fontSize.base,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  errorBtn: {
+    marginTop: spacing.xl,
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing['2xl'],
+    borderRadius: radii.full,
+  },
+  errorBtnText: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
+    color: colors.textOnAccent,
   },
 });

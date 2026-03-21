@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth-store';
 import { useCreditsStore } from '../../src/stores/credits-store';
+import { showAlert } from '../../src/utils/alert';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
@@ -24,18 +25,14 @@ function SettingsRow({ icon, label, onPress }: RowProps) {
 }
 
 const showComingSoon = (feature: string) => {
-  if (Platform.OS === 'web') {
-    window.alert(`${feature} — coming soon!`);
-  } else {
-    Alert.alert('Coming Soon', `${feature} is not yet available.`);
-  }
+  showAlert('Coming Soon', `${feature} is not yet available.`);
 };
 
 export default function SettingsScreen() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const { isDesktop } = useResponsive();
-  const { credits, fetchCredits } = useCreditsStore();
+  const { credits, error: creditsError, fetchCredits } = useCreditsStore();
 
   useEffect(() => { fetchCredits(); }, []);
 
@@ -60,12 +57,16 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}>
       {/* Credits Card */}
-      <Pressable style={styles.creditsCard} onPress={() => router.push('/purchase')} role="button">
+      <Pressable style={styles.creditsCard} onPress={() => creditsError ? fetchCredits() : router.push('/purchase')} role="button">
         <View style={styles.creditsLeft}>
-          <Ionicons name="diamond" size={24} color={colors.accent} />
+          <Ionicons name="diamond" size={24} color={creditsError ? colors.error : colors.accent} />
           <View>
-            <Text style={styles.creditsLabel}>Credits remaining</Text>
-            <Text style={styles.creditsValue}>{credits ?? '—'}</Text>
+            <Text style={styles.creditsLabel}>
+              {creditsError ? 'Failed to load credits' : 'Credits remaining'}
+            </Text>
+            <Text style={styles.creditsValue}>
+              {creditsError ? 'Tap to retry' : (credits ?? '—')}
+            </Text>
           </View>
         </View>
         <View style={styles.creditsBuyBtn}>

@@ -14,6 +14,7 @@ import { useLocalSearchParams } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { imagesApi } from '../../src/services/api';
+import { showAlert } from '../../src/utils/alert';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
@@ -59,6 +60,7 @@ export default function ResultsScreen() {
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(
     null,
   );
+  const [error, setError] = useState<string | null>(null);
   const { isDesktop, width } = useResponsive();
 
   useEffect(() => {
@@ -67,8 +69,8 @@ export default function ResultsScreen() {
       try {
         const { data } = await imagesApi.getProject(id);
         setProject(data);
-      } catch {
-        // handled
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Failed to load project');
       } finally {
         setLoading(false);
       }
@@ -77,15 +79,19 @@ export default function ResultsScreen() {
   }, [id]);
 
   const handleDownload = async (img: GeneratedImage) => {
-    if (Platform.OS === 'web') {
-      window.open(img.imageUrl, '_blank');
-      return;
-    }
+    try {
+      if (Platform.OS === 'web') {
+        window.open(img.imageUrl, '_blank');
+        return;
+      }
 
-    const filename = `listic_${img.imageType}_${img.id}.png`;
-    const fileUri = `${FileSystem.documentDirectory}${filename}`;
-    await FileSystem.downloadAsync(img.imageUrl, fileUri);
-    await Share.share({ url: fileUri });
+      const filename = `listic_${img.imageType}_${img.id}.png`;
+      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+      await FileSystem.downloadAsync(img.imageUrl, fileUri);
+      await Share.share({ url: fileUri });
+    } catch {
+      showAlert('Download Failed', 'Could not download the image. Please try again.');
+    }
   };
 
   if (loading) {
@@ -96,10 +102,13 @@ export default function ResultsScreen() {
     );
   }
 
-  if (!project) {
+  if (error || !project) {
     return (
       <View style={styles.center}>
-        <Text style={styles.emptyText}>Project not found</Text>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+        <Text style={[styles.emptyText, { marginTop: spacing.md }]}>
+          {error || 'Project not found'}
+        </Text>
       </View>
     );
   }

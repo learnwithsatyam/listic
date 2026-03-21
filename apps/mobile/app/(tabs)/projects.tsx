@@ -34,14 +34,17 @@ export default function ProjectsScreen() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { isDesktop } = useResponsive();
 
   const loadProjects = async () => {
+    setError(null);
+    setLoading(true);
     try {
       const { data } = await imagesApi.getUserProjects();
       setProjects(data);
     } catch {
-      // handled silently
+      setError('Failed to load projects');
     } finally {
       setLoading(false);
     }
@@ -55,6 +58,22 @@ export default function ProjectsScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="cloud-offline-outline" size={48} color={colors.error} />
+        <Text style={styles.emptyTitle}>{error}</Text>
+        <Text style={styles.emptyText}>
+          Check your connection and try again
+        </Text>
+        <Pressable style={styles.btn} onPress={loadProjects}>
+          <Ionicons name="refresh" size={20} color={colors.textOnAccent} />
+          <Text style={styles.btnText}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
