@@ -8,7 +8,6 @@ import {
   StyleSheet,
   TextInput,
   Switch,
-  Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
@@ -16,6 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { imagesApi } from '../src/services/api';
+import { showAlert } from '../src/utils/alert';
 import { useResponsive } from '../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../src/theme';
 
@@ -54,12 +54,19 @@ export default function UploadScreen() {
     'amazon',
   ]);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{
+    image?: string; name?: string; category?: string; platforms?: string; general?: string;
+  }>({});
   const { isDesktop } = useResponsive();
+
+  const clearError = (field: string) => {
+    setErrors((prev) => ({ ...prev, [field]: undefined, general: undefined }));
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow photo library access');
+      showAlert('Permission needed', 'Please allow photo library access');
       return;
     }
 
@@ -70,34 +77,37 @@ export default function UploadScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0]);
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > 10 * 1024 * 1024) {
+        setErrors((prev) => ({ ...prev, image: 'Image must be under 10MB' }));
+        return;
+      }
+      clearError('image');
+      setImage(asset);
     }
   };
 
   const togglePlatform = (slug: string) => {
-    setSelectedPlatforms((prev) =>
-      prev.includes(slug) ? prev.filter((p) => p !== slug) : [...prev, slug],
-    );
+    setSelectedPlatforms((prev) => {
+      const next = prev.includes(slug) ? prev.filter((p) => p !== slug) : [...prev, slug];
+      if (next.length > 0) clearError('platforms');
+      return next;
+    });
   };
 
   const handleSubmit = async () => {
-    if (!image) {
-      Alert.alert('Error', 'Please select a product image');
-      return;
-    }
-    if (!productName.trim()) {
-      Alert.alert('Error', 'Please enter a product name');
-      return;
-    }
-    if (!category) {
-      Alert.alert('Error', 'Please select a category');
-      return;
-    }
-    if (selectedPlatforms.length === 0) {
-      Alert.alert('Error', 'Please select at least one platform');
+    const newErrors: typeof errors = {};
+    if (!image) newErrors.image = 'Please select a product image';
+    if (!productName.trim()) newErrors.name = 'Product name is required';
+    if (!category) newErrors.category = 'Please select a category';
+    if (selectedPlatforms.length === 0) newErrors.platforms = 'Select at least one platform';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
+    setErrors({});
     setLoading(true);
     try {
       const formData = new FormData();
@@ -109,13 +119,12 @@ export default function UploadScreen() {
         JSON.stringify(selectedPlatforms),
       );
 
-      const uri = image.uri;
+      const uri = image!.uri;
       const filename = uri.split('/').pop() || 'photo.jpg';
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
 
       if (Platform.OS === 'web') {
-        // On web, fetch the blob URI / data URI and append as a real File
         const response = await fetch(uri);
         const blob = await response.blob();
         formData.append('image', blob, filename);
@@ -130,10 +139,9 @@ export default function UploadScreen() {
       const { data: project } = await imagesApi.createProject(formData);
       router.push(`/generate/${project.id}`);
     } catch (err: any) {
-      Alert.alert(
-        'Error',
-        err.response?.data?.message || 'Failed to create project',
-      );
+      setErrors({
+        general: err.response?.data?.message || 'Failed to create project',
+      });
     } finally {
       setLoading(false);
     }
@@ -141,8 +149,16 @@ export default function UploadScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}>
+      {/* General error banner */}
+      {errors.general && (
+        <View style={styles.banner}>
+          <Ionicons name="alert-circle" size={18} color={colors.error} />
+          <Text style={styles.bannerText}>{errors.general}</Text>
+        </View>
+      )}
+
       {/* Image Picker */}
-      <Pressable style={styles.imagePicker} onPress={pickImage}>
+      <Pressable style={[styles.imagePicker, errors.image && styles.imagePickerError]} onPress={pickImage}>
         {image ? (
           <Image source={{ uri: image.uri }} style={styles.previewImage} />
         ) : (
@@ -155,19 +171,23 @@ export default function UploadScreen() {
           </View>
         )}
       </Pressable>
+      {errors.image && <Text style={styles.fieldError}>{errors.image}</Text>}
 
       {/* Product Name */}
       <Text style={styles.label}>Product Name</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, errors.name && styles.inputError]}
         placeholder="e.g. Blue Cotton T-Shirt"
         placeholderTextColor={colors.textTertiary}
         value={productName}
-        onChangeText={setProductName}
+        onChangeText={(t) => { setProductName(t); clearError('name'); }}
       />
+      {errors.name && <Text style={styles.fieldError}>{errors.name}</Text>}
 
       {/* Category */}
-      <Text style={styles.label}>Category</Text>
+      <Text style={[styles.label, errors.category ? { color: colors.error } : undefined]}>
+        {errors.category ? 'Category — ' + errors.category : 'Category'}
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -179,6 +199,7 @@ export default function UploadScreen() {
             style={[styles.chip, category === cat && styles.chipActive]}
             onPress={() => {
               setCategory(cat);
+              clearError('category');
               const wearables = [
                 'T-Shirt',
                 'Shirt',
@@ -220,7 +241,9 @@ export default function UploadScreen() {
       )}
 
       {/* Platform Selection */}
-      <Text style={styles.label}>Target Platforms</Text>
+      <Text style={[styles.label, errors.platforms ? { color: colors.error } : undefined]}>
+        {errors.platforms ? 'Target Platforms — ' + errors.platforms : 'Target Platforms'}
+      </Text>
       <View style={styles.platformGrid}>
         {PLATFORMS.map((p) => (
           <Pressable
@@ -280,7 +303,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderStyle: 'dashed',
-    marginBottom: spacing['2xl'],
+    marginBottom: spacing.sm,
+  },
+  imagePickerError: {
+    borderColor: colors.error,
   },
   previewImage: { width: '100%', height: '100%', resizeMode: 'contain' },
   placeholder: {
@@ -324,7 +350,33 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     fontSize: fontSize.lg,
     color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  inputError: {
+    borderColor: colors.error,
+  },
+  fieldError: {
+    color: colors.error,
+    fontSize: fontSize.xs,
+    marginTop: 2,
+    marginBottom: spacing.md,
+    marginLeft: spacing.xs,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(242, 139, 130, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(242, 139, 130, 0.3)',
+    borderRadius: radii.md,
+    padding: spacing.md,
     marginBottom: spacing.lg,
+  },
+  bannerText: {
+    flex: 1,
+    color: colors.error,
+    fontSize: fontSize.sm,
   },
   chipScroll: { marginBottom: spacing.lg },
   chip: {

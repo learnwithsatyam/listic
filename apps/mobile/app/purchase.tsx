@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { paymentsApi } from '../src/services/api';
 import { useCreditsStore } from '../src/stores/credits-store';
+import { showAlert } from '../src/utils/alert';
 import { useResponsive } from '../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../src/theme';
 
@@ -97,7 +98,7 @@ export default function PurchaseScreen() {
         rzp.open();
       } else {
         // Native: not yet supported
-        Alert.alert('Info', 'Payments are currently available on web only.');
+        showAlert('Info', 'Payments are currently available on web only.');
         setPurchasing(null);
       }
     } catch {

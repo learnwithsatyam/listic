@@ -5,12 +5,12 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { authApi } from '../../src/services/api';
 import { useAuthStore } from '../../src/stores/auth-store';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
@@ -23,28 +23,36 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string; general?: string }>({});
   const { isDesktop } = useResponsive();
 
+  const clearError = (field: string) => {
+    setErrors((prev) => ({ ...prev, [field]: undefined, general: undefined }));
+  };
+
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-    if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
+    const newErrors: typeof errors = {};
+    if (!name.trim()) newErrors.name = 'Name is required';
+    if (!email.trim()) newErrors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(email.trim())) newErrors.email = 'Enter a valid email address';
+    if (!password) newErrors.password = 'Password is required';
+    else if (password.length < 8) newErrors.password = 'Must be at least 8 characters';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
+    setErrors({});
     setLoading(true);
     try {
-      const { data } = await authApi.register({ name, email, password });
+      const { data } = await authApi.register({ name: name.trim(), email: email.trim(), password });
       await setAuth(data.accessToken, data.userId);
       router.replace('/(tabs)/home');
     } catch (err: any) {
-      Alert.alert(
-        'Registration Failed',
-        err.response?.data?.message || 'Something went wrong',
-      );
+      setErrors({
+        general: err.response?.data?.message || 'Something went wrong',
+      });
     } finally {
       setLoading(false);
     }
@@ -59,32 +67,48 @@ export default function RegisterScreen() {
         <Text style={styles.title}>Create account</Text>
         <Text style={styles.subtitle}>Start generating product images</Text>
 
+        {errors.general && (
+          <View style={styles.banner}>
+            <Ionicons name="alert-circle" size={18} color={colors.error} />
+            <Text style={styles.bannerText}>{errors.general}</Text>
+          </View>
+        )}
+
         <View style={styles.inputGroup}>
-          <TextInput
-            style={styles.input}
-            placeholder="Full name"
-            placeholderTextColor={colors.textTertiary}
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.textTertiary}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password (min 8 characters)"
-            placeholderTextColor={colors.textTertiary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          <View>
+            <TextInput
+              style={[styles.input, errors.name && styles.inputError]}
+              placeholder="Full name"
+              placeholderTextColor={colors.textTertiary}
+              value={name}
+              onChangeText={(t) => { setName(t); clearError('name'); }}
+              autoCapitalize="words"
+            />
+            {errors.name && <Text style={styles.fieldError}>{errors.name}</Text>}
+          </View>
+          <View>
+            <TextInput
+              style={[styles.input, errors.email && styles.inputError]}
+              placeholder="Email"
+              placeholderTextColor={colors.textTertiary}
+              value={email}
+              onChangeText={(t) => { setEmail(t); clearError('email'); }}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {errors.email && <Text style={styles.fieldError}>{errors.email}</Text>}
+          </View>
+          <View>
+            <TextInput
+              style={[styles.input, errors.password && styles.inputError]}
+              placeholder="Password (min 8 characters)"
+              placeholderTextColor={colors.textTertiary}
+              value={password}
+              onChangeText={(t) => { setPassword(t); clearError('password'); }}
+              secureTextEntry
+            />
+            {errors.password && <Text style={styles.fieldError}>{errors.password}</Text>}
+          </View>
         </View>
 
         <Pressable
@@ -136,6 +160,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing['3xl'],
   },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(242, 139, 130, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(242, 139, 130, 0.3)',
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  bannerText: {
+    flex: 1,
+    color: colors.error,
+    fontSize: fontSize.sm,
+  },
   inputGroup: {
     gap: spacing.md,
     marginBottom: spacing['2xl'],
@@ -148,6 +188,15 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     fontSize: fontSize.lg,
     color: colors.textPrimary,
+  },
+  inputError: {
+    borderColor: colors.error,
+  },
+  fieldError: {
+    color: colors.error,
+    fontSize: fontSize.xs,
+    marginTop: 4,
+    marginLeft: spacing.xs,
   },
   btn: {
     backgroundColor: colors.accent,
