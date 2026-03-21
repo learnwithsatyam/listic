@@ -5,7 +5,16 @@ import { AppModule } from './app.module';
 import { StorageService } from './storage/storage.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Block production startup with insecure JWT secret
+  const jwtSecret = process.env.JWT_SECRET || '';
+  if (process.env.NODE_ENV === 'production' && jwtSecret.includes('change-in-production')) {
+    console.error('FATAL: JWT_SECRET is still the dev placeholder. Set a strong secret for production.');
+    process.exit(1);
+  }
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   app.enableCors({
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:8081'],

@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { ImagesModule } from './images/images.module';
 import { StorageModule } from './storage/storage.module';
 import { PlatformsModule } from './platforms/platforms.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -23,10 +24,15 @@ import { PlatformsModule } from './platforms/platforms.module';
           ssl: isLocal ? false : { rejectUnauthorized: false },
           autoLoadEntities: true,
           synchronize: config.get('NODE_ENV') !== 'production',
-          retryAttempts: 2,
+          retryAttempts: 3,
           retryDelay: 1000,
           extra: {
-            connectionTimeoutMillis: 5000,
+            connectionTimeoutMillis: 10000,
+            idleTimeoutMillis: 30000,
+            max: 5,
+            // Keepalive prevents Neon from killing idle connections
+            keepAlive: true,
+            keepAliveInitialDelayMillis: 10000,
           },
         };
       },
@@ -37,6 +43,7 @@ import { PlatformsModule } from './platforms/platforms.module';
     ImagesModule,
     StorageModule,
     PlatformsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}

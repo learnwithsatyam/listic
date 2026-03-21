@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useCreditsStore } from '../../src/stores/credits-store';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
 const PLATFORMS = [
@@ -15,6 +17,9 @@ const PLATFORMS = [
 export default function HomeScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
+  const { credits, fetchCredits } = useCreditsStore();
+
+  useEffect(() => { fetchCredits(); }, []);
 
   return (
     <View style={styles.container}>
@@ -27,10 +32,16 @@ export default function HomeScreen() {
         <View style={isDesktop ? styles.innerDesktop : undefined}>
           {/* Hero */}
           <View style={styles.hero}>
-            <Text style={[styles.greeting, isDesktop && styles.greetingDesktop]}>
-              Hello
-              <Text style={styles.greetingAccent}>{' '}there</Text>
-            </Text>
+            <View style={styles.heroTop}>
+              <Text style={[styles.greeting, isDesktop && styles.greetingDesktop]}>
+                Hello
+                <Text style={styles.greetingAccent}>{' '}there</Text>
+              </Text>
+              <Pressable style={styles.creditsChip} onPress={() => router.push('/purchase')}>
+                <Ionicons name="diamond" size={14} color={colors.accent} />
+                <Text style={styles.creditsChipText}>{credits ?? '—'} credits</Text>
+              </Pressable>
+            </View>
             <Text style={styles.subtitle}>
               What product would you like to photograph today?
             </Text>
@@ -120,6 +131,25 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   hero: { marginBottom: spacing['3xl'], marginTop: spacing.lg },
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  creditsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSoft,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.full,
+  },
+  creditsChipText: {
+    fontSize: fontSize.sm,
+    color: colors.accent,
+    fontWeight: fontWeight.medium,
+  },
   greeting: {
     fontSize: fontSize['4xl'],
     fontWeight: fontWeight.bold,

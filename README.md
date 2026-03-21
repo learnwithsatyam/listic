@@ -27,6 +27,15 @@ graph TB
             GL[Sequential Gen Loop]
             RB[Retry w/ Backoff]
         end
+        subgraph Payments[PaymentsModule]
+            PT[Credit Tiers]
+            CO[Razorpay Orders]
+            VR[Payment Verification]
+        end
+        subgraph Users[UsersModule]
+            UM[GET /users/me]
+            AC[Add Credits]
+        end
         subgraph Platforms[PlatformsModule]
             PS[5 Platform Specs]
             DR[Dimensions / Rules]
@@ -37,13 +46,16 @@ graph TB
         GEM["Google Gemini API\ngemini-2.5-flash-image\nPrompt → base64 image"]
         DB[("Neon Postgres (SSL)\n• users\n• image_projects\n• generated_images")]
         STR[("Storage (dual-mode)\n• Azure Blob Storage\n• Local FS (dev)")]
+        RAZORPAY["Razorpay\nOrders + Checkout\nUPI, Cards, Net Banking"]
         AF["Azure Functions\nImage Post-processing\nsharp resize/format"]
     end
 
     Client -->|"HTTP (JWT Bearer)"| API
     Images -->|generateContent| GEM
+    Payments -->|Orders + Verify| RAZORPAY
     Auth --> DB
     Images --> DB
+    Users --> DB
     Images --> STR
     Images -.-> AF
 ```
@@ -56,9 +68,10 @@ graph TB
 |------------------|----------------------------------------------------------------|
 | **Frontend**     | React Native 0.76 + Expo ~52 + Expo Router ~4                 |
 | **Backend**      | NestJS 10.3 (Express, CommonJS)                                |
-| **AI**           | Google Gemini API (`gemini-2.5-flash-image` via REST)          |
+| **AI**           | Google Gemini API (`gemini-2.5-flash-image` via `@google/generative-ai` SDK) |
 | **Database**     | Neon Postgres (TypeORM, SSL, auto-sync entities)               |
 | **Storage**      | Azure Blob Storage (prod) / Local filesystem (dev)             |
+| **Payments**     | Razorpay (Orders + Checkout JS widget)                         |
 | **Auth**         | Passport JWT (HS256, 7-day expiry) + bcrypt                    |
 | **State**        | Zustand 4.4 (mobile) + expo-secure-store / localStorage       |
 | **Post-process** | Azure Functions + Sharp                                        |
@@ -106,8 +119,15 @@ Listic/
 │   │   │   │
 │   │   │   ├── users/                   # User Management
 │   │   │   │   ├── users.module.ts
-│   │   │   │   ├── users.service.ts     # CRUD, deductCredit (atomic SQL)
+│   │   │   │   ├── users.controller.ts   # GET /users/me (profile + credits)
+│   │   │   │   ├── users.service.ts     # CRUD, deductCredit, addCredits (atomic SQL)
 │   │   │   │   └── user.entity.ts       # User entity with creditsRemaining
+│   │   │   │
+│   │   │   ├── payments/                # Razorpay Payments
+│   │   │   │   ├── payments.module.ts
+│   │   │   │   ├── payments.controller.ts  # GET /payments/tiers, POST /checkout, /webhook
+│   │   │   │   ├── payments.service.ts  # Razorpay orders, signature verification, credit tiers
+│   │   │   │   └── payments.dto.ts      # CreateCheckoutDto
 │   │   │   │
 │   │   │   └── platforms/               # Marketplace Specs
 │   │   │       ├── platforms.module.ts
@@ -135,15 +155,19 @@ Listic/
 │   │   │   │   ├── projects.tsx         # Project list
 │   │   │   │   └── settings.tsx         # User settings
 │   │   │   ├── generate/
-│   │   │   │   └── [id].tsx             # Generation progress screen
-│   │   │   └── results/
-│   │   │       └── [id].tsx             # Generated images display
+│   │   │   │   └── [id].tsx             # Generation progress (polls real status)
+│   │   │   ├── results/
+│   │   │   │   └── [id].tsx             # Generated images display
+│   │   │   ├── purchase.tsx             # Purchase credits (Razorpay checkout)
+│   │   │   ├── about.tsx                # About Listic page
+│   │   │   └── privacy.tsx              # Privacy Policy page
 │   │   │
 │   │   ├── src/
 │   │   │   ├── services/
-│   │   │   │   └── api.ts              # Axios client + auth/images/platforms API
+│   │   │   │   └── api.ts              # Axios client + auth/images/platforms/users/payments API
 │   │   │   ├── stores/
-│   │   │   │   └── auth-store.ts       # Zustand: token, userId, isAuthenticated
+│   │   │   │   ├── auth-store.ts       # Zustand: token, userId, isAuthenticated
+│   │   │   │   └── credits-store.ts   # Zustand: credits balance, fetchCredits
 │   │   │   ├── hooks/
 │   │   │   │   └── useResponsive.ts    # Breakpoints: sm/md/lg/xl, isDesktop
 │   │   │   ├── components/
@@ -223,8 +247,8 @@ Managed by **TypeORM** with `synchronize: true` in development. Entities auto-cr
 
 | Method | Endpoint           | Auth | Body                                    | Response                          |
 |--------|--------------------|------|-----------------------------------------|-----------------------------------|
-| POST   | `/auth/register`   | No   | `{ email, password (≥8), name }`        | `{ access_token, userId }`        |
-| POST   | `/auth/login`      | No   | `{ email, password }`                   | `{ access_token, userId }`        |
+| POST   | `/auth/register`   | No   | `{ email, password (≥8), name }`        | `{ accessToken, userId }`         |
+| POST   | `/auth/login`      | No   | `{ email, password }`                   | `{ accessToken, userId }`         |
 
 - JWT tokens are HS256-signed, valid for 7 days
 - Passwords hashed with bcrypt (12 salt rounds)
@@ -235,9 +259,25 @@ Managed by **TypeORM** with `synchronize: true` in development. Entities auto-cr
 | Method | Endpoint                | Body / Params                                    | Response               |
 |--------|-------------------------|--------------------------------------------------|------------------------|
 | POST   | `/images/projects`      | `FormData: image (≤10MB, JPEG/PNG/WebP), productName, productCategory, isWearable, targetPlatforms` | `ImageProject`         |
-| POST   | `/images/generate`      | `{ projectId, additionalPrompt? }`               | `ImageProject` (with generated images) |
+| POST   | `/images/generate`      | `{ projectId, additionalPrompt? }`               | `ImageProject` (status: processing — generation runs in background, poll GET for progress) |
 | GET    | `/images/projects`      | —                                                | `ImageProject[]`       |
 | GET    | `/images/projects/:id`  | —                                                | `ImageProject`         |
+
+### Users (`/api/users`) — Require JWT
+
+| Method | Endpoint       | Response                                              |
+|--------|----------------|-------------------------------------------------------|
+| GET    | `/users/me`    | `{ id, email, name, creditsRemaining, createdAt }`    |
+
+### Payments (`/api/payments`)
+
+| Method | Endpoint             | Auth | Body / Params      | Response                |
+|--------|----------------------|------|--------------------|-------------------------|
+| GET    | `/payments/tiers`    | No   | —                  | `CreditTier[]`          |
+| POST   | `/payments/create-order` | JWT  | `{ tierSlug }`     | `{ orderId, amount, currency, keyId }`  |
+| POST   | `/payments/verify` | JWT  | `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }` | `{ success, credits }` |
+
+Payment is verified server-side using HMAC-SHA256 signature validation against the Razorpay key secret.
 
 ### Platforms (`/api/platforms`) — Public
 
@@ -268,16 +308,25 @@ sequenceDiagram
     API->>DB: INSERT image_projects (status: pending)
     API-->>App: ImageProject
 
-    Note over User, App: 2. GENERATE
+    Note over User, App: 2. GENERATE (non-blocking)
     User->>App: Tap "Generate"
     App->>API: POST /images/generate { projectId }
     API->>DB: UPDATE users SET credits - 1 WHERE credits > 0
     API->>DB: UPDATE project status → processing
+    API-->>App: ImageProject (status: processing)
+    Note over API: Fire-and-forget: background generation starts
 
-    Note over API, AI: 3. AI LOOP (×6 sequential)
+    Note over App, API: 3. POLL FOR PROGRESS
+    loop Every 4 seconds
+        App->>API: GET /images/projects/:id
+        API-->>App: ImageProject + generatedImages[]
+        Note over App: Show count: N of 6 images done
+    end
+
+    Note over API, AI: Background: AI LOOP (×6 sequential)
     loop For each type: main, lifestyle, closeup, scale, angle, model
-        API->>API: buildPrompt(type, productName)
-        API->>AI: POST generateContent { prompt, responseModalities: [IMAGE] }
+        API->>API: buildPrompt(type, product) + original image
+        API->>AI: generateContent([prompt, imagePart])
         Note right of AI: Returns base64 image
         AI-->>API: inlineData (base64 PNG)
         Note over API: callWithRetry: 5 retries,<br>exponential backoff on 429
@@ -288,8 +337,8 @@ sequenceDiagram
 
     Note over API, DB: 4. COMPLETE
     API->>DB: UPDATE project status → completed
-    App->>API: GET /images/projects/:id (poll)
-    API-->>App: ImageProject + generatedImages[]
+    App->>API: GET /images/projects/:id (final poll)
+    API-->>App: ImageProject (status: completed) + generatedImages[6]
 
     Note over Store, Fn: 5. POST-PROCESS (optional)
     API->>Fn: POST /processImage { imageUrl, width, height, bg }
@@ -301,18 +350,18 @@ sequenceDiagram
 
 ## AI Prompts
 
-The `ImagenService.buildPrompt()` method generates type-specific prompts:
+The `ImagenService.buildPrompt()` method generates type-specific prompts. Each prompt is sent to Gemini **alongside the original product image** as an `inlineData` part, so the AI transforms/re-renders the actual product photo rather than generating from text alone:
 
 | Image Type   | Prompt Template |
 |-------------|-----------------|
-| **main**     | Professional e-commerce product photo of `{name}`, centered on pure white background, studio lighting, high resolution, sharp details, product fills 85% of frame |
-| **lifestyle**| `{name}` in a beautiful lifestyle setting, natural lighting, aspirational context, high quality product photography |
-| **closeup**  | Extreme close-up detail shot of `{name}`, showing texture and craftsmanship, macro photography, studio lighting, white background |
-| **scale**    | `{name}` shown with size reference, clean product photography, professional scale comparison, white background |
-| **angle**    | `{name}` photographed from a 45-degree angle, showing depth and dimension, professional product photography, white background |
-| **model**    | Professional fashion photography, model wearing `{name}`, studio setting, clean background, editorial style |
+| **main**     | Generate a professional e-commerce product shot of this item. Place it on a clean, pure white studio background with realistic drop shadows. Bright, even commercial lighting. Product fills 85% of frame. For `{platform}`. |
+| **lifestyle**| Place this product in a beautiful lifestyle setting. Natural lighting, aspirational context, high quality product photography. Make it look premium and desirable for `{platform}`. |
+| **closeup**  | Generate an extreme close-up detail shot of this product. Show texture, material quality, and craftsmanship. Macro photography style, studio lighting, white background. |
+| **scale**    | Show this product with a size reference for scale comparison. Clean product photography on white background, professional lighting. |
+| **angle**    | Photograph this product from a 45-degree angle showing depth and dimension. Professional product photography, white background, studio lighting. |
+| **model**    | Render this clothing item on a professional fashion model. Show only from the neck down to the feet; do not show the face. Natural lighting, high-end editorial look for `{platform}`. |
 
-If an `additionalPrompt` is provided, it's appended after a comma.
+If an `additionalPrompt` is provided, it's appended after a space.
 
 Wearable products get 5 standard types + **model**. Non-wearable products get 5 standard types + a second **angle** variant. Max 6 images per generation.
 
@@ -378,7 +427,28 @@ flowchart LR
 - New users: **10 free credits**
 - Cost: **1 credit per generation** (generates 6 images)
 - Deduction: Atomic SQL `UPDATE users SET creditsRemaining = creditsRemaining - 1 WHERE id = :id AND creditsRemaining > 0`
+- Addition: Atomic SQL `UPDATE users SET creditsRemaining = creditsRemaining + N WHERE id = :id`
 - If 0 credits → `403 Forbidden: No credits remaining`
+
+### Credit Pricing (Razorpay)
+
+| Tier        | Credits | Price (INR) | Per Credit | Per Image | Savings |
+|-------------|---------|-------------|------------|-----------|----------|
+| **Starter** | 5       | ₹99         | ₹19.80     | ₹3.30     | —        |
+| **Popular** | 15      | ₹249        | ₹16.60     | ₹2.77     | 16% off  |
+| **Pro**     | 50      | ₹699        | ₹13.98     | ₹2.33     | 29% off  |
+
+**Purchase flow:**
+1. User selects a tier on the Purchase Credits screen
+2. Backend creates a Razorpay Order with `notes: { userId, credits }`
+3. Frontend opens Razorpay Checkout JS widget (in-page modal)
+4. User pays via UPI, card, net banking, or wallet
+5. On success, Razorpay returns `razorpay_payment_id`, `razorpay_order_id`, `razorpay_signature`
+6. Frontend sends these to `POST /payments/verify`
+7. Backend verifies HMAC-SHA256 signature and atomically adds credits
+8. Success banner shown, credits refresh instantly
+
+**Credits displayed in:** Home screen (chip), Settings (prominent card), Desktop sidebar (badge) — all link to Purchase page.
 
 ---
 
@@ -429,6 +499,15 @@ Actions:
   loadToken()             — Restore token from SecureStore/localStorage on app init
 ```
 
+**Zustand** store (`credits-store.ts`):
+```
+credits      — Current credit balance (number | null)
+loading      — Fetching state
+
+Actions:
+  fetchCredits()  — GET /users/me → update credits
+```
+
 Storage: `expo-secure-store` (native) / `localStorage` (web), with platform-aware fallback.
 
 ### API Client
@@ -439,7 +518,7 @@ Axios instance with:
 - Request interceptor: auto-attaches `Authorization: Bearer` header
 - Response interceptor: auto-logout on 401
 
-Exported method groups: `authApi`, `imagesApi`, `platformsApi`.
+Exported method groups: `authApi`, `imagesApi`, `platformsApi`, `usersApi`, `paymentsApi`.
 
 ---
 
@@ -456,6 +535,8 @@ Exported method groups: `authApi`, `imagesApi`, `platformsApi`.
 | `AZURE_STORAGE_CONTAINER`          | No       | Blob container name (default: `listic`)   |
 | `NODE_ENV`                         | No       | `development` / `production`              |
 | `PORT`                             | No       | Server port (default: `3000`)             |
+| `RAZORPAY_KEY_ID`                  | No       | Razorpay Key ID (rzp_test_... or rzp_live_...) |
+| `RAZORPAY_KEY_SECRET`              | No       | Razorpay Key Secret                       |
 | `CORS_ORIGINS`                     | No       | Comma-separated allowed origins           |
 
 ### Frontend (`apps/mobile/.env`)
@@ -474,6 +555,7 @@ Exported method groups: `authApi`, `imagesApi`, `platformsApi`.
 - npm (workspaces support)
 - Gemini API key (free — [aistudio.google.com](https://aistudio.google.com))
 - Neon Postgres account (free tier — [neon.tech](https://neon.tech))
+- Razorpay account (optional, for payments — [razorpay.com](https://razorpay.com))
 
 ### 1. Install
 

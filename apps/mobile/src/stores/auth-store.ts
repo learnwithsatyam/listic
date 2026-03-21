@@ -15,6 +15,19 @@ interface AuthState {
 const TOKEN_KEY = 'listic_auth_token';
 const USERID_KEY = 'listic_user_id';
 
+/** Decode JWT payload and check if it's expired */
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (!payload.exp) return false; // no expiry claim
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    return true;
+  }
+}
+
 // SecureStore is not available on web
 const storage = {
   get: async (key: string): Promise<string | null> => {
@@ -60,6 +73,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   loadToken: async () => {
     const token = await storage.get(TOKEN_KEY);
     const userId = await storage.get(USERID_KEY);
+
+    // If token is expired, clear it
+    if (token && isTokenExpired(token)) {
+      await storage.delete(TOKEN_KEY);
+      await storage.delete(USERID_KEY);
+      set({ token: null, userId: null, isAuthenticated: false, isLoading: false });
+      return;
+    }
+
     set({
       token,
       userId,

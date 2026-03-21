@@ -35,4 +35,13 @@ export class UsersService {
       .execute();
     return (result.affected ?? 0) > 0;
   }
+
+  async addCredits(userId: string, amount: number): Promise<void> {
+    await this.usersRepo
+      .createQueryBuilder()
+      .update(User)
+      .set({ creditsRemaining: () => `"creditsRemaining" + ${Math.floor(Math.abs(amount))}` })
+      .where('id = :userId', { userId })
+      .execute();
+  }
 }

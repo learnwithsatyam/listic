@@ -1,7 +1,9 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useEffect } from 'react';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useResponsive } from '../../src/hooks/useResponsive';
+import { useCreditsStore } from '../../src/stores/credits-store';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
 const TAB_ITEMS = [
@@ -13,6 +15,9 @@ const TAB_ITEMS = [
 function DesktopSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { credits, fetchCredits } = useCreditsStore();
+
+  useEffect(() => { fetchCredits(); }, []);
 
   const isActive = (name: string) => pathname === `/${name}` || pathname.startsWith(`/${name}/`);
 
@@ -55,6 +60,15 @@ function DesktopSidebar() {
           );
         })}
       </View>
+
+      {/* Credits badge at bottom */}
+      <View style={{ flex: 1 }} />
+      <Pressable style={sidebarStyles.creditsBadge} onPress={() => router.push('/purchase')}>
+        <Ionicons name="diamond" size={16} color={colors.accent} />
+        <Text style={sidebarStyles.creditsText}>
+          {credits ?? '—'} credit{credits !== 1 ? 's' : ''}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -204,5 +218,19 @@ const sidebarStyles = StyleSheet.create({
   navLabelActive: {
     color: colors.accent,
     fontWeight: fontWeight.semibold,
+  },
+  creditsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+  },
+  creditsText: {
+    fontSize: fontSize.sm,
+    color: colors.accent,
+    fontWeight: fontWeight.medium,
   },
 });

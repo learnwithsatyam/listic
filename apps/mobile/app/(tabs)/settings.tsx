@@ -1,7 +1,9 @@
 import { View, Text, ScrollView, StyleSheet, Pressable, Alert, Platform } from 'react-native';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/auth-store';
+import { useCreditsStore } from '../../src/stores/credits-store';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
@@ -13,7 +15,7 @@ interface RowProps {
 
 function SettingsRow({ icon, label, onPress }: RowProps) {
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable style={styles.row} onPress={onPress} role="button">
       <Ionicons name={icon} size={20} color={colors.textSecondary} />
       <Text style={styles.rowText}>{label}</Text>
       <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
@@ -21,10 +23,21 @@ function SettingsRow({ icon, label, onPress }: RowProps) {
   );
 }
 
+const showComingSoon = (feature: string) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${feature} — coming soon!`);
+  } else {
+    Alert.alert('Coming Soon', `${feature} is not yet available.`);
+  }
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const { isDesktop } = useResponsive();
+  const { credits, fetchCredits } = useCreditsStore();
+
+  useEffect(() => { fetchCredits(); }, []);
 
   const doLogout = async () => {
     await logout();
@@ -46,25 +59,41 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}>
+      {/* Credits Card */}
+      <Pressable style={styles.creditsCard} onPress={() => router.push('/purchase')} role="button">
+        <View style={styles.creditsLeft}>
+          <Ionicons name="diamond" size={24} color={colors.accent} />
+          <View>
+            <Text style={styles.creditsLabel}>Credits remaining</Text>
+            <Text style={styles.creditsValue}>{credits ?? '—'}</Text>
+          </View>
+        </View>
+        <View style={styles.creditsBuyBtn}>
+          <Text style={styles.creditsBuyText}>Buy more</Text>
+        </View>
+      </Pressable>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.sectionCard}>
-          <SettingsRow icon="card-outline" label="Manage Subscription" />
+          <SettingsRow icon="card-outline" label="Manage Subscription" onPress={() => showComingSoon('Manage Subscription')} />
           <View style={styles.divider} />
-          <SettingsRow icon="diamond-outline" label="Purchase Credits" />
+          <SettingsRow icon="diamond-outline" label="Purchase Credits" onPress={() => router.push('/purchase')} />
+          <View style={styles.divider} />
+          <SettingsRow icon="receipt-outline" label="Payment History" onPress={() => router.push('/payment-history')} />
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>App</Text>
         <View style={styles.sectionCard}>
-          <SettingsRow icon="information-circle-outline" label="About Listic" />
+          <SettingsRow icon="information-circle-outline" label="About Listic" onPress={() => router.push('/about')} />
           <View style={styles.divider} />
-          <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" />
+          <SettingsRow icon="shield-checkmark-outline" label="Privacy Policy" onPress={() => router.push('/privacy')} />
         </View>
       </View>
 
-      <Pressable style={styles.logoutBtn} onPress={handleLogout}>
+      <Pressable style={styles.logoutBtn} onPress={handleLogout} role="button">
         <Ionicons name="log-out-outline" size={20} color="#EA4335" />
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
@@ -127,4 +156,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   logoutText: { color: '#EA4335', fontWeight: fontWeight.semibold, fontSize: fontSize.base },
+  creditsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    padding: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  creditsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  creditsLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  creditsValue: {
+    fontSize: fontSize['2xl'],
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  creditsBuyBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.full,
+  },
+  creditsBuyText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textOnAccent,
+  },
 });

@@ -52,3 +52,33 @@ export const platformsApi = {
   getAll: () => api.get('/platforms'),
   getBySlug: (slug: string) => api.get(`/platforms/${slug}`),
 };
+
+// --- Users ---
+export const usersApi = {
+  getMe: () => api.get('/users/me'),
+};
+
+// --- Payments ---
+export const paymentsApi = {
+  getTiers: () => api.get('/payments/tiers'),
+  createOrder: (tierSlug: string) =>
+    api.post<{ orderId: string; amount: number; currency: string; keyId: string }>('/payments/create-order', { tierSlug }),
+  verifyPayment: (data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) => api.post<{ success: boolean; credits: number }>('/payments/verify', data),
+  getHistory: () =>
+    api.get<Array<{
+      id: string;
+      razorpayOrderId: string;
+      razorpayPaymentId: string;
+      tierSlug: string;
+      tierName: string;
+      credits: number;
+      amountPaise: number;
+      currency: string;
+      status: string;
+      createdAt: string;
+    }>>('/payments/history'),
+};
