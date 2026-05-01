@@ -17,8 +17,10 @@
 8. [Payment Flow (Razorpay)](#8-payment-flow-razorpay)
 9. [Authentication & Security](#9-authentication--security)
 10. [Platform Specifications](#10-platform-specifications)
-11. [Environment Variables](#11-environment-variables)
-12. [Key Code Reference](#12-key-code-reference)
+11. [Admin Panel](#11-admin-panel)
+12. [Infrastructure & Deployment](#12-infrastructure--deployment)
+13. [Environment Variables](#13-environment-variables)
+14. [Key Code Reference](#14-key-code-reference)
 
 ---
 
@@ -38,6 +40,11 @@ graph TB
         Payments[Payments Module]
         Storage[Storage Module]
         Platforms[Platforms Module]
+        Admin[Admin Module]
+    end
+
+    subgraph AdminPanel["⚡ Admin Dashboard"]
+        AdminUI[React + Vite + Tailwind]
     end
 
     subgraph External["☁️ External Services"]
@@ -52,6 +59,9 @@ graph TB
     API_Client -->|REST API| Images
     API_Client -->|REST API| Payments
 
+    AdminUI -->|REST API + JWT| Admin
+    AdminUI -->|REST API + JWT| Auth
+
     Images --> Gemini
     Images --> Storage
     Storage --> Azure
@@ -59,6 +69,7 @@ graph TB
     Auth --> Neon
     Images --> Neon
     Payments --> Neon
+    Admin --> Neon
 ```
 
 ---
@@ -68,6 +79,7 @@ graph TB
 | Layer       | Technology                              |
 |-------------|----------------------------------------|
 | Frontend    | Expo ~52.0, React Native, Expo Router ~4.0 |
+| Admin Panel | React 18, Vite 5, Tailwind CSS 3, Recharts, React Router 6 |
 | Backend     | NestJS 10.3 (CommonJS), TypeScript     |
 | Database    | PostgreSQL (Neon free tier), TypeORM    |
 | AI          | Google Gemini 2.5 Flash Image (`@google/generative-ai`) |
@@ -100,9 +112,11 @@ flowchart LR
         AuthCtrl["POST /api/auth/register\nPOST /api/auth/login"]
         ImagesCtrl["POST /api/images/projects\nPOST /api/images/projects/:id/generate\nGET  /api/images/projects/:id\nGET  /api/images/projects"]
         PayCtrl["GET  /api/payments/tiers\nPOST /api/payments/create-order\nPOST /api/payments/verify\nGET  /api/payments/history\nPOST /api/payments/webhook"]
+        AdminCtrl["GET  /api/admin/dashboard\nGET  /api/admin/activity\nGET  /api/admin/revenue\nGET  /api/admin/users\nPATCH /api/admin/users/:id/credits\nPATCH /api/admin/users/:id/admin"]
     end
 
     Mobile -->|HTTP + JWT| API
+    AdminPanel -->|HTTP + JWT| API
 ```
 
 ---
@@ -111,7 +125,29 @@ flowchart LR
 
 ```
 apps/
+├── admin/                       # Admin Dashboard (React + Vite)
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
+│   ├── vercel.json              # Vercel SPA rewrites
+│   └── src/
+│       ├── main.tsx             # React entry point
+│       ├── App.tsx              # Routes + ProtectedRoute guard
+│       ├── api.ts               # Axios client with JWT interceptors
+│       ├── components/
+│       │   ├── Layout.tsx       # Sidebar nav + outlet
+│       │   └── StatCard.tsx     # Reusable stat card
+│       └── pages/
+│           ├── Login.tsx        # Admin login
+│           ├── Dashboard.tsx    # Overview stats + recent activity
+│           ├── Users.tsx        # Paginated user list + search
+│           ├── UserDetail.tsx   # User detail, credits, admin toggle
+│           └── Revenue.tsx      # Charts, tier breakdown, payments
+│
 ├── api/                         # NestJS Backend
+│   ├── make-admin.js            # One-off script to promote user to admin
 │   └── src/
 │       ├── main.ts              # Bootstrap, CORS, rawBody, JWT guard
 │       ├── app.module.ts        # Root module, TypeORM config
@@ -120,15 +156,21 @@ apps/
 │       │   ├── auth.service.ts  # Register, login, JWT sign
 │       │   ├── auth.controller.ts
 │       │   ├── jwt.strategy.ts  # Passport JWT strategy
-│       │   └── jwt-auth.guard.ts
+│       │   ├── jwt-auth.guard.ts
+│       │   └── admin.guard.ts   # AdminGuard — checks user.isAdmin
 │       ├── users/
 │       │   ├── user.entity.ts   # Users table
 │       │   ├── users.service.ts # CRUD + credit mgmt
 │       │   └── users.module.ts
+│       ├── admin/
+│       │   ├── admin.module.ts
+│       │   ├── admin.controller.ts  # Dashboard, users, revenue endpoints
+│       │   ├── admin.service.ts     # Stats, analytics, user management
+│       │   └── admin.dto.ts         # Validated DTOs for admin inputs
 │       ├── images/
 │       │   ├── images.service.ts          # Orchestration
 │       │   ├── imagen.service.ts          # Gemini SDK
-│       │   ├── image-processing.service.ts # sharp pipeline
+│       │   ├── image-processing.service.ts # sharp pipeline (trim+resize+pad)
 │       │   ├── images.controller.ts
 │       │   └── entities/
 │       │       └── image-project.entity.ts # Projects + Generated Images
@@ -177,6 +219,7 @@ erDiagram
         varchar passwordHash
         varchar name
         int creditsRemaining
+        boolean isAdmin
         timestamp createdAt
         timestamp updatedAt
     }
@@ -230,7 +273,7 @@ erDiagram
 
 | Table | Key Fields | Notes |
 |-------|-----------|-------|
-| `users` | `creditsRemaining` | Decremented on generate, incremented on purchase |
+| `users` | `creditsRemaining`, `isAdmin` | Decremented on generate, incremented on purchase. `isAdmin` gates admin API access |
 | `image_projects` | `status`: pending → processing → completed/failed | Tracks generation lifecycle |
 | `generated_images` | `imageType`: main, lifestyle, closeup, scale, angle, model | 6 images per project |
 | `payments` | `razorpayPaymentId` (UNIQUE) | Idempotency key for double-payment protection |
@@ -269,8 +312,8 @@ sequenceDiagram
         Azure-->>API: raw image URL
         API->>Azure: resolveExternalUrl() → download raw
         Azure-->>API: base64 of raw image
-        API->>Sharp: processForPlatform(buffer, specs)
-        Sharp-->>API: platform-compliant buffer
+        API->>Sharp: trim whitespace + resize to 96% fill + pad
+        Sharp-->>API: platform-compliant buffer (narrow borders)
         API->>Azure: uploadBuffer() → generated container
         Azure-->>API: final processed URL
         API->>DB: Save GeneratedImage entity
@@ -537,6 +580,8 @@ sequenceDiagram
 | **Route Guard** | Expo Router segments | `PUBLIC_SEGMENTS` whitelist in `_layout.tsx` |
 | **Input Validation** | NestJS ValidationPipe | `whitelist: true, forbidNonWhitelisted: true` |
 | **CORS** | Explicit origin whitelist | `CORS_ORIGINS` env var, split by comma |
+| **Admin Guard** | Role-based access control | `AdminGuard` checks `user.isAdmin` from DB on every request |
+| **Admin API** | JWT + AdminGuard stacked | All `/api/admin/*` endpoints require both guards |
 | **Webhook** | HMAC-SHA256 signature | Raw body + `X-Razorpay-Signature` header |
 | **Payments** | Idempotency | UNIQUE constraint on `razorpayPaymentId` |
 | **Payments** | Atomic transactions | Single DB transaction for payment + credits |
@@ -584,41 +629,146 @@ graph LR
 | AJIO | 1080×1440 | 5 MB | Any | 70% | JPEG, PNG |
 | Gumroad | 1280×720 | 8 MB | Any | 50% | JPEG, PNG, GIF |
 
-### Key Code: sharp Post-Processing
+### Key Code: sharp Post-Processing (Trim + Resize + Pad)
 
 ```typescript
-// image-processing.service.ts
+// image-processing.service.ts — 3-step pipeline for minimal borders
 async processForPlatform(inputBuffer: Buffer, spec: PlatformSpec): Promise<Buffer> {
-  const { width, height } = spec.dimensions;
-  const bg = spec.backgroundRequirement === 'white'
-    ? { r: 255, g: 255, b: 255, alpha: 1 }
-    : { r: 255, g: 255, b: 255, alpha: 0 };
+  // 1. Trim excess whitespace from Gemini output
+  const trimmed = await this.trimWhitespace(inputBuffer);
 
-  let pipeline = sharp(inputBuffer)
-    .resize(width, height, { fit: 'contain', background: bg });
+  // 2. Resize product to fill 96% of frame, pad to exact dimensions
+  const padded = await this.resizeAndPad(trimmed, width, height, bg);
 
-  if (spec.backgroundRequirement === 'white') {
-    pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } });
-  }
+  // 3. Flatten to white if required, output as PNG
+  //    Falls back to JPEG if PNG exceeds platform file size limit
+}
 
-  pipeline = pipeline.png({ compressionLevel: 6 });
-  const outputBuffer = await pipeline.toBuffer();
+// Product fills 96% of frame → ~2% border on each side
+private async resizeAndPad(buffer, targetWidth, targetHeight, bg) {
+  const fillRatio = 0.96;
+  const innerW = Math.round(targetWidth * fillRatio);
+  const innerH = Math.round(targetHeight * fillRatio);
 
-  // Fallback to JPEG if PNG exceeds platform file size limit
-  if (outputBuffer.length / 1024 > spec.maxFileSizeKB) {
-    return sharp(inputBuffer)
-      .resize(width, height, { fit: 'contain', background: bg })
-      .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .jpeg({ quality: 85 })
-      .toBuffer();
-  }
-  return outputBuffer;
+  const resized = await sharp(buffer)
+    .resize(innerW, innerH, { fit: 'inside' })
+    .toBuffer();
+
+  return sharp(resized)
+    .extend({ top, bottom, left, right, background: bg })
+    .toBuffer();
 }
 ```
 
 ---
 
-## 11. Environment Variables
+## 11. Admin Panel
+
+### Architecture
+
+The admin panel is a separate React SPA (`apps/admin`) that communicates with the same NestJS API via JWT-authenticated REST calls.
+
+```mermaid
+flowchart LR
+    subgraph Admin["⚡ Admin Dashboard (Vercel)"]
+        Login[Login Page] --> Verify[Verify admin access]
+        Verify --> Dashboard[Dashboard]
+        Dashboard --> UsersPage[Users Management]
+        Dashboard --> RevenuePage[Revenue Analytics]
+        UsersPage --> UserDetail[User Detail]
+    end
+
+    subgraph API["🖥️ NestJS API (Render)"]
+        AuthEndpoint[POST /api/auth/login]
+        AdminEndpoints[GET/PATCH /api/admin/*]
+    end
+
+    Login -->|Login with existing credentials| AuthEndpoint
+    AuthEndpoint -->|JWT token| Verify
+    Verify -->|GET /api/admin/dashboard| AdminEndpoints
+    Dashboard -->|JWT + AdminGuard| AdminEndpoints
+```
+
+### Admin API Endpoints
+
+| Method | Endpoint | Description | Guards |
+|--------|----------|-------------|--------|
+| GET | `/api/admin/dashboard` | Overview stats (users, revenue, projects) | JWT + Admin |
+| GET | `/api/admin/activity` | Recent users, payments, projects | JWT + Admin |
+| GET | `/api/admin/revenue` | Revenue breakdown with year/month filters | JWT + Admin |
+| GET | `/api/admin/revenue/monthly` | Monthly chart data for a given year | JWT + Admin |
+| GET | `/api/admin/users` | Paginated user list with search | JWT + Admin |
+| GET | `/api/admin/users/:id` | User detail with payments & projects | JWT + Admin |
+| PATCH | `/api/admin/users/:id/credits` | Update user credits (0–100,000) | JWT + Admin |
+| PATCH | `/api/admin/users/:id/admin` | Toggle admin role | JWT + Admin |
+
+### Admin Guard Flow
+
+```mermaid
+sequenceDiagram
+    participant Client as ⚡ Admin Panel
+    participant JWT as JwtAuthGuard
+    participant Admin as AdminGuard
+    participant DB as 🗄️ Postgres
+    participant Controller as AdminController
+
+    Client->>JWT: Request with Bearer token
+    JWT->>JWT: Validate JWT signature & expiry
+    JWT->>Admin: request.user = {userId, email}
+    Admin->>DB: SELECT isAdmin FROM users WHERE id = userId
+    alt isAdmin = true
+        DB-->>Admin: User is admin
+        Admin->>Controller: Allow request
+    else isAdmin = false
+        DB-->>Admin: Not admin
+        Admin-->>Client: 403 Forbidden
+    end
+```
+
+### Promoting a User to Admin
+
+```bash
+DATABASE_URL=postgres://... node apps/api/make-admin.js user@email.com
+```
+
+Or directly in Neon SQL Editor:
+```sql
+UPDATE users SET "isAdmin" = true WHERE email = 'user@email.com';
+```
+
+---
+
+## 12. Infrastructure & Deployment
+
+| Service | Provider | URL / Details |
+|---------|----------|---------------|
+| Database | Neon (Postgres) | Serverless Postgres with connection pooling |
+| API | Render | https://api.listic.in |
+| Mobile/Web App | Vercel | Main app deployment |
+| Admin Panel | Vercel | Separate Vercel project (`apps/admin`) |
+| Blob Storage | Azure Blob Storage | Two containers with SAS URL auth |
+| AI | Google Gemini | gemini-2.5-flash-image model |
+| Payments | Razorpay | INR payment gateway |
+
+### Deployment Configuration
+
+**API (Render):**
+- Build command: `npm run build:api`
+- Start command: `npm run start:api`
+- Environment: Set all API env vars (DATABASE_URL, JWT_SECRET, etc.)
+- CORS_ORIGINS must include all frontend domains
+
+**Admin Panel (Vercel):**
+- Root directory: `apps/admin`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Framework: Vite
+- Environment: `VITE_API_URL=https://api.listic.in/api`
+- SPA rewrites configured in `vercel.json`
+
+---
+
+## 13. Environment Variables
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
@@ -632,11 +782,17 @@ async processForPlatform(inputBuffer: Buffer, spec: PlatformSpec): Promise<Buffe
 | `RAZORPAY_WEBHOOK_SECRET` | Razorpay webhook signature secret | Set from Razorpay Dashboard |
 | `NODE_ENV` | Environment mode | `development` / `production` |
 | `PORT` | API server port | `3000` |
-| `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:8081,http://localhost:19006` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:8081,http://localhost:5173` |
+
+**Admin Panel (`apps/admin`):**
+
+| Variable | Purpose | Example |
+|----------|---------|--------|
+| `VITE_API_URL` | API base URL (must end with `/api`) | `https://api.listic.in/api` |
 
 ---
 
-## 12. Key Code Reference
+## 14. Key Code Reference
 
 ### Gemini AI Image Generation
 
@@ -760,6 +916,13 @@ flowchart TD
     Loop -->|All 6 done| Complete[Status: completed]
     Complete --> Results[View Results Page]
     Results --> Download[Download / Share Images]
+
+    subgraph AdminFlow["Admin Panel"]
+        AdminLogin[Admin Login] --> AdminDash[Dashboard]
+        AdminDash --> ManageUsers[Manage Users]
+        AdminDash --> ViewRevenue[Revenue Analytics]
+        ManageUsers --> EditCredits[Edit Credits / Toggle Admin]
+    end
 ```
 
 ---
