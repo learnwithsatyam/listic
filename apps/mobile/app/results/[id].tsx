@@ -81,7 +81,16 @@ export default function ResultsScreen() {
   const handleDownload = async (img: GeneratedImage) => {
     try {
       if (Platform.OS === 'web') {
-        window.open(img.imageUrl, '_blank');
+        const response = await fetch(img.imageUrl);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `listic_${img.imageType}_${img.id}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
         return;
       }
 
@@ -91,6 +100,17 @@ export default function ResultsScreen() {
       await Share.share({ url: fileUri });
     } catch {
       showAlert('Download Failed', 'Could not download the image. Please try again.');
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!project) return;
+    for (const img of project.generatedImages) {
+      await handleDownload(img);
+      // Small delay between downloads to avoid browser throttling
+      if (Platform.OS === 'web') {
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
   };
 
@@ -181,9 +201,7 @@ export default function ResultsScreen() {
       {/* Download All */}
       <Pressable
         style={styles.downloadAllBtn}
-        onPress={() => {
-          project.generatedImages.forEach((img) => handleDownload(img));
-        }}
+        onPress={handleDownloadAll}
       >
         <Ionicons name="cloud-download-outline" size={20} color={colors.textOnAccent} />
         <Text style={styles.downloadAllText}>Download All</Text>
