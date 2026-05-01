@@ -81,7 +81,12 @@ export default function ResultsScreen() {
   const handleDownload = async (img: GeneratedImage) => {
     try {
       if (Platform.OS === 'web') {
-        const response = await fetch(img.imageUrl);
+        const token = (await import('../../src/stores/auth-store')).useAuthStore.getState().token;
+        const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+        const response = await fetch(`${API_BASE_URL}/images/download/${img.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error('Download failed');
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Param,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -12,6 +13,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ImagesService } from './images.service';
@@ -57,5 +59,19 @@ export class ImagesController {
   @Get('projects/:id')
   getProject(@Req() req: any, @Param('id') id: string) {
     return this.imagesService.getProject(req.user.userId, id);
+  }
+
+  @Get('download/:imageId')
+  async downloadImage(
+    @Req() req: any,
+    @Param('imageId') imageId: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.imagesService.downloadImage(req.user.userId, imageId);
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Disposition': `attachment; filename="listic_${imageId}.png"`,
+    });
+    res.send(buffer);
   }
 }

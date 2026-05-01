@@ -170,6 +170,25 @@ export class ImagesService {
     });
   }
 
+  async downloadImage(userId: string, imageId: string): Promise<Buffer> {
+    const image = await this.generatedImageRepo.findOne({
+      where: { id: imageId },
+      relations: ['project'],
+    });
+    if (!image) throw new NotFoundException('Image not found');
+    if (image.project.userId !== userId)
+      throw new ForbiddenException('Not your image');
+
+    const resolved = await this.storageService.resolveExternalUrl(image.imageUrl);
+    if (resolved.startsWith('data:')) {
+      const match = resolved.match(/^data:[^;]+;base64,(.+)$/);
+      if (!match) throw new Error('Invalid data URI');
+      return Buffer.from(match[1], 'base64');
+    }
+    const res = await fetch(resolved);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
   private getImageTypes(isWearable: boolean): string[] {
     const types = ['main', 'lifestyle', 'closeup', 'scale', 'angle'];
     if (isWearable) {
