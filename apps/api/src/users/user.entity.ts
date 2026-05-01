@@ -25,6 +25,9 @@ export class User {
   @Column({ default: 0 })
   creditsRemaining: number;
 
+  @Column({ default: false })
+  isAdmin: boolean;
+
   @OneToMany(() => ImageProject, (project) => project.user)
   projects: ImageProject[];
 
