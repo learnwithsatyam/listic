@@ -8,6 +8,7 @@ import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/
 
 const TAB_ITEMS = [
   { name: 'home', label: 'Home', icon: 'sparkles' as const, iconOutline: 'sparkles-outline' as const },
+  { name: 'studio', label: 'Studio', icon: 'restaurant' as const, iconOutline: 'restaurant-outline' as const },
   { name: 'projects', label: 'Projects', icon: 'grid' as const, iconOutline: 'grid-outline' as const },
   { name: 'settings', label: 'Settings', icon: 'settings' as const, iconOutline: 'settings-outline' as const },
 ];
@@ -91,6 +92,7 @@ export default function TabsLayout() {
             }}
           >
             <Tabs.Screen name="home" options={{ title: 'Home' }} />
+            <Tabs.Screen name="studio" options={{ title: 'Food Studio' }} />
             <Tabs.Screen name="projects" options={{ title: 'Projects' }} />
             <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
           </Tabs>
@@ -128,6 +130,16 @@ export default function TabsLayout() {
           title: 'Home',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="sparkles" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="studio"
+        options={{
+          title: 'Food Studio',
+          tabBarLabel: 'Studio',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="restaurant-outline" color={color} size={size} />
           ),
         }}
       />

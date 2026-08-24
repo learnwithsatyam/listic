@@ -53,6 +53,9 @@ export default function RootLayout() {
         <Stack.Screen name="upload" options={{ title: 'New Project' }} />
         <Stack.Screen name="generate/[id]" options={{ title: '', headerBackTitle: '' }} />
         <Stack.Screen name="results/[id]" options={{ title: 'Results' }} />
+        <Stack.Screen name="backgrounds/new" options={{ title: 'New Background' }} />
+        <Stack.Screen name="shoots/new" options={{ title: 'New Shoot' }} />
+        <Stack.Screen name="shoots/[id]" options={{ title: 'Shoot' }} />
         <Stack.Screen name="about" options={{ title: 'About Listic' }} />
         <Stack.Screen name="privacy" options={{ title: 'Privacy Policy' }} />
         <Stack.Screen name="purchase" options={{ title: 'Purchase Credits' }} />

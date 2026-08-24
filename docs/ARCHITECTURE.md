@@ -13,6 +13,8 @@
 4. [Module Structure](#4-module-structure)
 5. [Database Schema](#5-database-schema)
 6. [Image Generation Pipeline](#6-image-generation-pipeline)
+6b. [Food Studio Pipeline](#6b-food-studio-pipeline)
+6c. [Watermark-Free Output](#6c-watermark-free-output)
 7. [Azure Blob Storage](#7-azure-blob-storage)
 8. [Payment Flow (Razorpay)](#8-payment-flow-razorpay)
 9. [Authentication & Security](#9-authentication--security)
@@ -169,11 +171,20 @@ apps/
 │       │   └── admin.dto.ts         # Validated DTOs for admin inputs
 │       ├── images/
 │       │   ├── images.service.ts          # Orchestration
-│       │   ├── imagen.service.ts          # Gemini SDK
-│       │   ├── image-processing.service.ts # sharp pipeline (trim+resize+pad)
+│       │   ├── imagen.service.ts          # Gemini SDK + generateFromParts()
+│       │   ├── watermark.service.ts       # Badge + provenance-metadata stripping
+│       │   ├── image-processing.service.ts # sharp (platform pad, social cover-crop)
 │       │   ├── images.controller.ts
 │       │   └── entities/
 │       │       └── image-project.entity.ts # Projects + Generated Images
+│       ├── studio/                        # Food Studio (cafe Instagram photos)
+│       │   ├── studio.service.ts          # Batch orchestration, credits, refunds
+│       │   ├── studio-ai.service.ts       # Background + composition prompts
+│       │   ├── studio-formats.ts          # Instagram output sizes
+│       │   ├── studio.controller.ts       # Backgrounds, shoots, downloads
+│       │   ├── dto/studio.dto.ts
+│       │   └── entities/
+│       │       └── studio.entity.ts       # Backgrounds + Shoots + Shots
 │       ├── storage/
 │       │   ├── storage.service.ts  # Azure Blob / local filesystem
 │       │   └── storage.module.ts
@@ -195,15 +206,20 @@ apps/
     │   │   └── register.tsx
     │   ├── (tabs)/
     │   │   ├── home.tsx
+    │   │   ├── studio.tsx       # Food Studio hub
     │   │   └── settings.tsx
     │   ├── upload.tsx
     │   ├── generate/[id].tsx
     │   ├── results/[id].tsx
+    │   ├── backgrounds/new.tsx  # Create a background
+    │   ├── shoots/new.tsx       # Pick background + add dishes
+    │   ├── shoots/[id].tsx      # Progress, results, downloads
     │   ├── purchase.tsx
     │   └── payment-history.tsx
     └── src/
         ├── api.ts               # Axios client
         ├── stores/auth-store.ts # Zustand auth state
+        ├── utils/download.ts    # Authenticated image download (web + native)
         └── theme.ts             # Gemini dark theme colors
 ```
 
@@ -264,9 +280,52 @@ erDiagram
         timestamp createdAt
     }
 
+    studio_backgrounds {
+        uuid id PK
+        uuid userId FK
+        varchar name
+        varchar source
+        text prompt
+        varchar imageUrl
+        int width
+        int height
+        timestamp createdAt
+    }
+
+    food_shoots {
+        uuid id PK
+        uuid userId FK
+        uuid backgroundId FK
+        varchar name
+        varchar format
+        text stylePrompt
+        varchar status
+        varchar errorMessage
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    food_shots {
+        uuid id PK
+        uuid shootId FK
+        varchar dishName
+        varchar sourceImageUrl
+        varchar resultImageUrl
+        varchar status
+        varchar errorMessage
+        text prompt
+        int width
+        int height
+        timestamp createdAt
+    }
+
     users ||--o{ image_projects : "has many"
     users ||--o{ payments : "has many"
+    users ||--o{ studio_backgrounds : "owns"
+    users ||--o{ food_shoots : "owns"
     image_projects ||--o{ generated_images : "has many"
+    studio_backgrounds ||--o{ food_shoots : "shared by"
+    food_shoots ||--o{ food_shots : "has many"
 ```
 
 ### Entity Relationships
@@ -347,6 +406,162 @@ Attempt 3 → wait 30s
 Attempt 4 → wait 40s
 Attempt 5 → fail
 ```
+
+---
+
+## 6b. Food Studio Pipeline
+
+A second generation pipeline aimed at cafes and restaurants. The problem it
+solves: a menu photographed over several days on different surfaces looks like a
+jumble on Instagram. The fix is to fix the *background* and vary only the dish.
+
+### Data model
+
+Three tables, one relationship chain:
+
+- **`studio_backgrounds`** — a reusable scene plate. `source` is either
+  `uploaded` (the owner's own photo) or `generated` (built from a text prompt,
+  with that prompt kept for reference). Backgrounds are deliberately independent
+  of shoots so one scene can back an entire season of posts.
+- **`food_shoots`** — a batch of dishes bound to one background, plus the output
+  `format` and an optional shoot-wide `stylePrompt`.
+- **`food_shots`** — one dish: its source photo, its composed result, and its own
+  status. Per-dish status is what lets one failure not sink the batch.
+
+### Two Gemini calls
+
+Both go through `ImagenService.generateFromParts(prompt, images[])`, the same
+low-level call the marketplace pipeline uses.
+
+| Call | Inputs | Prompt intent |
+|------|--------|---------------|
+| `generateBackground()` | prompt only | An **empty** scene — no food, dishes, drinks, people or hands — with a clear central area, soft directional light, framed to the chosen aspect. |
+| `composeDishOnBackground()` | background + dish photo | Merge two images into one photograph. Lock the dish (same food, garnish, portion, plate) and the background (same surface, props, angle, light), then reconcile them physically. |
+
+The composition prompt is the interesting one. Naming what must **not** change is
+what keeps the model from quietly re-plating the food or redecorating the room:
+
+```
+Preserve the dish exactly: the same food, the same garnish, the same colours,
+the same portion size, and the same plate, bowl, tray or cup it is served in.
+
+Preserve the background exactly: the same surface, props, colours, textures,
+camera angle and lighting direction as IMAGE 1.
+
+Make the two match physically: correct the dish's perspective so it sits flat on
+the natural resting surface at the scene's eye level, at a realistic real-world
+size. Add a soft contact shadow where it meets the surface plus ambient
+occlusion underneath, and relight the dish to the scene's colour temperature,
+intensity and highlight direction so nothing looks pasted in.
+```
+
+### Credits and refunds
+
+Composition is charged per dish, taken atomically for the whole batch up front:
+
+```ts
+const paid = await this.usersService.deductCredits(userId, pending.length);
+if (!paid) throw new ForbiddenException(`Not enough credits — this shoot needs ${pending.length}`);
+```
+
+`deductCredits` uses a single `WHERE creditsRemaining >= :amount` update, so a
+batch is either fully paid for or not started — never half-charged.
+
+Refunds are then granular. A dish that fails is marked `failed`, has its one
+credit returned, and the loop moves on. A failure before any dish runs (an
+unreadable background) refunds the whole batch. The result is that a user is only
+ever charged for images they actually received.
+
+### Output sizing
+
+`ImageProcessingService.processForSocial()` handles studio output, and is
+deliberately *not* `processForPlatform()`. Marketplace images want the product
+trimmed and padded onto white; a studio image is edge-to-edge artwork where
+padding would show as bars. So it cover-crops instead, using sharp's `attention`
+strategy to keep the salient region:
+
+```ts
+sharp(inputBuffer)
+  .resize(target.width, target.height, { fit: 'cover', position: sharp.strategy.attention })
+  .png({ compressionLevel: 6 })
+```
+
+| Slug | Aspect | Dimensions |
+|------|--------|------------|
+| `square` | 1:1 | 1080 × 1080 |
+| `portrait` | 4:5 | 1080 × 1350 |
+| `story` | 9:16 | 1080 × 1920 |
+| `landscape` | 1.91:1 | 1080 × 566 |
+
+### Downloading the background separately
+
+The background is a first-class artifact, not a by-product:
+`GET /studio/backgrounds/:id/download` streams it as a PNG attachment, proxied
+through the API with the JWT so the browser never hits blob storage cross-origin.
+A background stays deletable only while no shoot references it.
+
+---
+
+## 6c. Watermark-Free Output
+
+Generated images must never carry a Gemini badge or any other generator mark.
+Three layers, applied to **every** Gemini image in both pipelines.
+
+### 1. Prompt suppression
+
+`ImagenService.generateFromParts()` appends a shared negative instruction to
+every single call — there is no code path that reaches Gemini without it:
+
+```ts
+const parts = [
+  `${prompt} ${NO_WATERMARK_INSTRUCTION}`,
+  ...images.map((img) => ({ inlineData: img })),
+];
+```
+
+This is the cheapest defence and the only one that costs nothing in pixels.
+
+### 2. Metadata stripping
+
+`WatermarkService.sanitize()` re-encodes the buffer through sharp. sharp does not
+carry metadata across unless explicitly told to, so EXIF, XMP and the
+C2PA/provenance tags Google attaches all disappear. Nothing left in the file
+identifies it as AI-generated.
+
+### 3. Corner-badge trim
+
+Generator badges are always corner-anchored. Rather than trying to detect one,
+a thin uniform margin is shaved off all four edges — that catches a badge in any
+corner, and costs no framing because the image is resized to its target
+dimensions immediately afterwards.
+
+```ts
+const insetX = Math.round((width * this.edgeCropPercent) / 100);
+const insetY = Math.round((height * this.edgeCropPercent) / 100);
+
+return await sharp(input)
+  .extract({ left: insetX, top: insetY, width: width - insetX * 2, height: height - insetY * 2 })
+  .png({ compressionLevel: 6 })
+  .toBuffer();
+```
+
+Governed by `WATERMARK_EDGE_CROP_PERCENT` (default `2.5`, clamped to `0–10`;
+`0` skips the crop but still strips metadata). The service degrades safely — a
+buffer sharp cannot decode is logged and returned untouched rather than throwing
+and killing a generation run.
+
+### Ordering
+
+Sanitizing happens **before** anything is stored, so no un-cleaned image ever
+reaches blob storage or the database:
+
+```
+Gemini → sanitize (metadata + crop) → resize to target → upload → DB row
+```
+
+> **Scope:** this removes everything visible or readable. It does not attempt to
+> touch Google's SynthID signal, which is encoded into the pixels themselves and
+> is invisible to viewers.
 
 ---
 
@@ -775,6 +990,7 @@ UPDATE users SET "isAdmin" = true WHERE email = 'user@email.com';
 | `DATABASE_URL` | Neon Postgres connection string | `postgresql://user:pass@host/listic?sslmode=require` |
 | `JWT_SECRET` | JWT signing key (must change in production) | `listic-dev-secret-...` |
 | `GEMINI_API_KEY` | Google Gemini API key | `AIzaSy...` |
+| `WATERMARK_EDGE_CROP_PERCENT` | Edge margin (%) trimmed off generated images to strip generator badges (max `10`, `0` disables) | `2.5` |
 | `AZURE_SAS_URL_ORIGINALS` | SAS URL for user-uploaded-product-images container | `https://listic.blob.core.windows.net/user-uploaded-product-images?sp=...&sig=...` |
 | `AZURE_SAS_URL_GENERATED` | SAS URL for ai-generated-product-images container | `https://listic.blob.core.windows.net/ai-generated-product-images?sp=...&sig=...` |
 | `RAZORPAY_KEY_ID` | Razorpay API key ID | `rzp_test_...` |

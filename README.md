@@ -2,6 +2,11 @@
 
 Generate 6 compliance-ready product images for Amazon, Flipkart, Meesho, AJIO, and Gumroad — from a single product photo.
 
+**Food Studio** does the same job for cafes and restaurants: pick one background —
+upload it, or describe it and let AI build it — then drop every dish onto that same
+scene so an Instagram grid reads as a single shoot. All generated images come out
+free of any Gemini or AI watermark.
+
 ---
 
 ## Architecture Overview
@@ -26,6 +31,13 @@ graph TB
             CD[Credit Deduction]
             GL[Sequential Gen Loop]
             RB[Retry w/ Backoff]
+            WM[Watermark Stripping]
+        end
+        subgraph Studio[StudioModule]
+            BG[Background: upload or generate]
+            CM[Dish → Background Compose]
+            SF[Instagram Formats]
+            PR[Per-Dish Refunds]
         end
         subgraph Payments[PaymentsModule]
             PT[Credit Tiers]
@@ -52,6 +64,9 @@ graph TB
 
     Client -->|"HTTP (JWT Bearer)"| API
     Images -->|generateContent| GEM
+    Studio -->|generateContent| GEM
+    Studio --> DB
+    Studio --> STR
     Payments -->|Orders + Verify| RAZORPAY
     Auth --> DB
     Images --> DB
@@ -74,7 +89,7 @@ graph TB
 | **Payments**     | Razorpay (Orders + Checkout JS widget)                         |
 | **Auth**         | Passport JWT (HS256, 7-day expiry) + bcrypt                    |
 | **State**        | Zustand 4.4 (mobile) + expo-secure-store / localStorage       |
-| **Post-process** | Azure Functions + Sharp                                        |
+| **Post-process** | Sharp (watermark strip, platform pad, social cover-crop) + Azure Functions |
 | **Hosting**      | Fly.io (API) / Expo (mobile/web)                               |
 | **Monorepo**     | npm workspaces (`apps/*`, `packages/*`)                        |
 | **Language**      | TypeScript (strict) throughout                                 |
@@ -108,10 +123,23 @@ Listic/
 │   │   │   │   ├── images.controller.ts # REST endpoints (file upload, generate, query)
 │   │   │   │   ├── images.service.ts    # Business logic: create project, generate loop
 │   │   │   │   ├── imagen.service.ts    # Gemini API client (prompt → base64 image)
+│   │   │   │   ├── watermark.service.ts # Strips generator badges + provenance metadata
+│   │   │   │   ├── image-processing.service.ts  # sharp: platform pad + social cover-crop
 │   │   │   │   ├── dto/
 │   │   │   │   │   └── images.dto.ts    # CreateProjectDto, GenerateImagesDto
 │   │   │   │   └── entities/
 │   │   │   │       └── image-project.entity.ts  # ImageProject + GeneratedImage
+│   │   │   │
+│   │   │   ├── studio/                  # Food Studio (cafe Instagram photos)
+│   │   │   │   ├── studio.module.ts     # Wires StudioService + StudioAiService
+│   │   │   │   ├── studio.controller.ts # Backgrounds, shoots, downloads
+│   │   │   │   ├── studio.service.ts    # Batch composition, credits, refunds
+│   │   │   │   ├── studio-ai.service.ts # Background + dish-composition prompts
+│   │   │   │   ├── studio-formats.ts    # Instagram sizes (square/portrait/story/landscape)
+│   │   │   │   ├── dto/
+│   │   │   │   │   └── studio.dto.ts
+│   │   │   │   └── entities/
+│   │   │   │       └── studio.entity.ts # StudioBackground + FoodShoot + FoodShot
 │   │   │   │
 │   │   │   ├── storage/                 # File Storage Abstraction
 │   │   │   │   ├── storage.module.ts
@@ -152,12 +180,18 @@ Listic/
 │   │   │   ├── (tabs)/                  # Dashboard tab group
 │   │   │   │   ├── _layout.tsx          # Tab bar (mobile) / Sidebar (desktop ≥1024px)
 │   │   │   │   ├── home.tsx             # Dashboard home
+│   │   │   │   ├── studio.tsx           # Food Studio hub (backgrounds + shoots)
 │   │   │   │   ├── projects.tsx         # Project list
 │   │   │   │   └── settings.tsx         # User settings
 │   │   │   ├── generate/
 │   │   │   │   └── [id].tsx             # Generation progress (polls real status)
 │   │   │   ├── results/
 │   │   │   │   └── [id].tsx             # Generated images display
+│   │   │   ├── backgrounds/
+│   │   │   │   └── new.tsx              # Create a background (describe or upload)
+│   │   │   ├── shoots/
+│   │   │   │   ├── new.tsx              # Pick background + add dish photos
+│   │   │   │   └── [id].tsx             # Shoot progress, results, downloads
 │   │   │   ├── purchase.tsx             # Purchase credits (Razorpay checkout)
 │   │   │   ├── about.tsx                # About Listic page
 │   │   │   └── privacy.tsx              # Privacy Policy page
@@ -237,6 +271,55 @@ erDiagram
     }
 ```
 
+### Food Studio Tables
+
+```mermaid
+erDiagram
+    users ||--o{ studio_backgrounds : "owns"
+    users ||--o{ food_shoots : "owns"
+    studio_backgrounds ||--o{ food_shoots : "shared by"
+    food_shoots ||--o{ food_shots : "has many"
+
+    studio_backgrounds {
+        UUID id PK
+        UUID userId FK
+        VARCHAR name
+        VARCHAR source "uploaded | generated"
+        TEXT prompt "nullable"
+        VARCHAR imageUrl
+        INT width
+        INT height
+        TIMESTAMP createdAt
+    }
+
+    food_shoots {
+        UUID id PK
+        UUID userId FK
+        UUID backgroundId FK
+        VARCHAR name
+        VARCHAR format "square | portrait | story | landscape"
+        TEXT stylePrompt "nullable"
+        VARCHAR status "pending | processing | completed | failed"
+        VARCHAR errorMessage "nullable"
+        TIMESTAMP createdAt
+        TIMESTAMP updatedAt
+    }
+
+    food_shots {
+        UUID id PK
+        UUID shootId FK
+        VARCHAR dishName
+        VARCHAR sourceImageUrl
+        VARCHAR resultImageUrl "nullable"
+        VARCHAR status "pending | processing | completed | failed"
+        VARCHAR errorMessage "nullable"
+        TEXT prompt "nullable"
+        INT width
+        INT height
+        TIMESTAMP createdAt
+    }
+```
+
 Managed by **TypeORM** with `synchronize: true` in development. Entities auto-create tables on startup.
 
 ---
@@ -262,6 +345,46 @@ Managed by **TypeORM** with `synchronize: true` in development. Entities auto-cr
 | POST   | `/images/generate`      | `{ projectId, additionalPrompt? }`               | `ImageProject` (status: processing — generation runs in background, poll GET for progress) |
 | GET    | `/images/projects`      | —                                                | `ImageProject[]`       |
 | GET    | `/images/projects/:id`  | —                                                | `ImageProject`         |
+
+### Food Studio (`/api/studio`) — All require JWT
+
+For cafes and restaurants: put every dish onto one shared background so an
+Instagram grid reads as a single shoot.
+
+**Backgrounds** — reusable scene plates, either uploaded or generated from a prompt.
+
+| Method | Endpoint                            | Body / Params                                    | Response             |
+|--------|-------------------------------------|--------------------------------------------------|----------------------|
+| POST   | `/studio/backgrounds/upload`        | `FormData: image (≤10MB, JPEG/PNG/WebP), name`   | `StudioBackground`   |
+| POST   | `/studio/backgrounds/generate`      | `{ prompt, name?, format? }` — **1 credit**      | `StudioBackground`   |
+| GET    | `/studio/backgrounds`               | —                                                | `StudioBackground[]` |
+| GET    | `/studio/backgrounds/:id`           | —                                                | `StudioBackground`   |
+| DELETE | `/studio/backgrounds/:id`           | — (refused while a shoot still uses it)          | `{ deleted: true }`  |
+| GET    | `/studio/backgrounds/:id/download`  | —                                                | PNG attachment       |
+
+**Shoots** — a batch of dishes composed onto one background.
+
+| Method | Endpoint                     | Body / Params                                                                                | Response      |
+|--------|------------------------------|-----------------------------------------------------------------------------------------------|---------------|
+| POST   | `/studio/shoots`             | `FormData: images[] (≤12), backgroundId, name, format?, stylePrompt?, dishNames (JSON array)` | `FoodShoot`   |
+| POST   | `/studio/shoots/:id/compose` | — **1 credit per dish**, charged up front, refunded per dish on failure                        | `FoodShoot` (status: processing — poll GET for progress) |
+| GET    | `/studio/shoots`             | —                                                                                             | `FoodShoot[]` |
+| GET    | `/studio/shoots/:id`         | —                                                                                             | `FoodShoot`   |
+| GET    | `/studio/shots/:id/download` | —                                                                                             | PNG attachment |
+| GET    | `/studio/formats`            | —                                                                                             | `StudioFormat[]` |
+
+Composition runs one dish at a time in the background. Each dish carries its own
+status, so a single failure doesn't sink the batch — that dish is marked `failed`,
+its credit is refunded, and it can be retried on its own.
+
+**Instagram output formats**
+
+| Slug        | Name          | Aspect  | Dimensions  |
+|-------------|---------------|---------|-------------|
+| `square`    | Square Post   | 1:1     | 1080 × 1080 |
+| `portrait`  | Portrait Post | 4:5     | 1080 × 1350 |
+| `story`     | Story / Reel  | 9:16    | 1080 × 1920 |
+| `landscape` | Landscape     | 1.91:1  | 1080 × 566  |
 
 ### Users (`/api/users`) — Require JWT
 
@@ -348,6 +471,68 @@ sequenceDiagram
 
 ---
 
+## Food Studio Flow
+
+```mermaid
+sequenceDiagram
+    actor Cafe as Cafe Owner
+    participant App as Expo App
+    participant API as NestJS API
+    participant DB as Neon Postgres
+    participant Store as Storage
+    participant AI as Gemini API<br>(gemini-2.5-flash-image)
+
+    Note over Cafe, App: 1. THE BACKGROUND (once)
+    alt Describe it
+        Cafe->>App: "rustic wooden cafe table by a window"
+        App->>API: POST /studio/backgrounds/generate
+        API->>DB: UPDATE users SET credits - 1
+        API->>AI: generateFromParts(empty-scene prompt)
+        AI-->>API: base64 image
+        API->>API: strip watermark + metadata → resize to format
+        API->>Store: uploadBuffer()
+    else Upload my own
+        Cafe->>App: Pick a photo of the real table
+        App->>API: POST /studio/backgrounds/upload (FormData)
+        API->>Store: uploadFile()
+    end
+    API->>DB: INSERT studio_backgrounds
+    API-->>App: StudioBackground
+    Note over Cafe, App: Downloadable on its own at any time<br>GET /studio/backgrounds/:id/download
+
+    Note over Cafe, App: 2. THE DISHES (batch)
+    Cafe->>App: Add cake, pizza, thali, maggi + name each
+    App->>API: POST /studio/shoots (images[] + backgroundId + dishNames)
+    API->>Store: uploadFile() ×N
+    API->>DB: INSERT food_shoots + food_shots (pending)
+    API-->>App: FoodShoot
+
+    App->>API: POST /studio/shoots/:id/compose
+    API->>DB: UPDATE users SET credits - N (atomic, all-or-nothing)
+    API-->>App: FoodShoot (processing)
+
+    Note over API, AI: Background: one dish at a time
+    loop For each dish
+        API->>AI: generateFromParts(compose prompt, [background, dish])
+        AI-->>API: base64 image
+        API->>API: strip watermark + metadata
+        API->>API: cover-crop to Instagram size
+        API->>Store: uploadBuffer()
+        API->>DB: UPDATE food_shots → completed
+        Note right of API: On failure: mark that dish failed,<br>refund 1 credit, carry on with the rest
+    end
+    API->>DB: UPDATE food_shoots → completed
+
+    Note over App, API: 3. POLL + DOWNLOAD
+    loop Every 4s while processing
+        App->>API: GET /studio/shoots/:id
+        API-->>App: shots[] with per-dish status
+    end
+    Cafe->>App: Download all / download background
+```
+
+---
+
 ## AI Prompts
 
 The `ImagenService.buildPrompt()` method generates type-specific prompts. Each prompt is sent to Gemini **alongside the original product image** as an `inlineData` part, so the AI transforms/re-renders the actual product photo rather than generating from text alone:
@@ -364,6 +549,48 @@ The `ImagenService.buildPrompt()` method generates type-specific prompts. Each p
 If an `additionalPrompt` is provided, it's appended after a space.
 
 Wearable products get 5 standard types + **model**. Non-wearable products get 5 standard types + a second **angle** variant. Max 6 images per generation.
+
+---
+
+### Food Studio Prompts
+
+Two prompt shapes in `StudioAiService`, both sent through the same
+`ImagenService.generateFromParts()` call as the marketplace pipeline:
+
+| Prompt | Purpose |
+|--------|---------|
+| **Background plate** | Renders the scene *empty* — no food, dishes, drinks, people or hands — with a clear area in the middle for a dish, soft directional light, and framing matched to the chosen Instagram aspect. |
+| **Dish composition** | Takes two images (background, dish photo) and merges them into one photograph. Locks the dish's identity (same food, garnish, portion, plate) and the background (same surface, props, angle, light), then matches them physically: perspective, real-world scale, contact shadow, ambient occlusion, and relighting to the scene's colour temperature. |
+
+An optional `stylePrompt` on the shoot is appended to every dish in that batch,
+which is what keeps a whole set looking like one sitting.
+
+---
+
+## Watermark-Free Output
+
+Gemini output must never carry a generator badge. Three layers handle this, and
+they apply to **both** pipelines — marketplace images and food studio photos:
+
+1. **Prompt suppression** — `ImagenService.generateFromParts()` appends
+   `NO_WATERMARK_INSTRUCTION` to every single call, forbidding watermarks, logos,
+   signatures, captions, badges, borders and text of any kind. This is the cheapest
+   defence and the only fully non-destructive one.
+2. **Metadata stripping** — `WatermarkService.sanitize()` re-encodes the pixels
+   through sharp, which drops every metadata block: EXIF, XMP, and the
+   C2PA/provenance tags Google attaches to Gemini output. Nothing in the file
+   identifies it as AI-generated.
+3. **Edge trim** — generator badges are always corner-anchored, so a thin uniform
+   margin is shaved off all four edges. That removes a badge whichever corner it
+   lands in without needing to detect it, and costs no framing because every image
+   is resized to its target dimensions immediately afterwards.
+
+Controlled by `WATERMARK_EDGE_CROP_PERCENT` (default `2.5`, clamped to `0–10`).
+Setting it to `0` disables the crop; metadata is still stripped.
+
+> **Note:** this removes everything visible or readable. It does not attempt to
+> touch Google's SynthID signal, which is encoded into the pixels themselves and is
+> invisible to viewers.
 
 ---
 
@@ -531,6 +758,7 @@ Exported method groups: `authApi`, `imagesApi`, `platformsApi`, `usersApi`, `pay
 | `DATABASE_URL`                     | Yes      | Neon Postgres connection string (SSL)     |
 | `JWT_SECRET`                       | Yes      | HMAC secret for signing JWT tokens        |
 | `GEMINI_API_KEY`                   | Yes      | Google AI Studio API key                  |
+| `WATERMARK_EDGE_CROP_PERCENT`      | No       | Edge margin (%) trimmed from generated images to strip generator badges. Default `2.5`, max `10`, `0` disables |
 | `AZURE_STORAGE_CONNECTION_STRING`  | No       | Azure Blob — if empty, uses local FS      |
 | `AZURE_STORAGE_CONTAINER`          | No       | Blob container name (default: `listic`)   |
 | `NODE_ENV`                         | No       | `development` / `production`              |

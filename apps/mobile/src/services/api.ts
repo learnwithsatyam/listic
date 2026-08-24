@@ -47,6 +47,76 @@ export const imagesApi = {
   getUserProjects: () => api.get('/images/projects'),
 };
 
+// --- Studio (cafe food photos on a consistent background) ---
+export type StudioFormatSlug = 'square' | 'portrait' | 'story' | 'landscape';
+
+export interface StudioFormat {
+  slug: StudioFormatSlug;
+  name: string;
+  aspect: string;
+  width: number;
+  height: number;
+  description: string;
+}
+
+export interface StudioBackground {
+  id: string;
+  name: string;
+  source: 'uploaded' | 'generated';
+  prompt?: string;
+  imageUrl: string;
+  width: number;
+  height: number;
+  createdAt: string;
+}
+
+export interface FoodShot {
+  id: string;
+  dishName: string;
+  sourceImageUrl: string;
+  resultImageUrl?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  errorMessage?: string;
+  width: number;
+  height: number;
+}
+
+export interface FoodShoot {
+  id: string;
+  name: string;
+  format: StudioFormatSlug;
+  stylePrompt?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  errorMessage?: string;
+  background: StudioBackground;
+  shots: FoodShot[];
+  createdAt: string;
+}
+
+export const studioApi = {
+  getFormats: () => api.get<StudioFormat[]>('/studio/formats'),
+
+  // Backgrounds
+  uploadBackground: (formData: FormData) =>
+    api.post<StudioBackground>('/studio/backgrounds/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  generateBackground: (data: { prompt: string; name?: string; format?: string }) =>
+    api.post<StudioBackground>('/studio/backgrounds/generate', data),
+  getBackgrounds: () => api.get<StudioBackground[]>('/studio/backgrounds'),
+  getBackground: (id: string) => api.get<StudioBackground>(`/studio/backgrounds/${id}`),
+  deleteBackground: (id: string) => api.delete(`/studio/backgrounds/${id}`),
+
+  // Shoots
+  createShoot: (formData: FormData) =>
+    api.post<FoodShoot>('/studio/shoots', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  composeShoot: (id: string) => api.post<FoodShoot>(`/studio/shoots/${id}/compose`),
+  getShoots: () => api.get<FoodShoot[]>('/studio/shoots'),
+  getShoot: (id: string) => api.get<FoodShoot>(`/studio/shoots/${id}`),
+};
+
 // --- Platforms ---
 export const platformsApi = {
   getAll: () => api.get('/platforms'),

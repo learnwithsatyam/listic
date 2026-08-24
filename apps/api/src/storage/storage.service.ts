@@ -209,6 +209,19 @@ export class StorageService {
     }
   }
 
+  /**
+   * Read any stored image back as a raw Buffer, wherever it lives
+   * (local filesystem, Azure blob, or an inline data URI).
+   */
+  async readAsBuffer(url: string): Promise<Buffer> {
+    const resolved = await this.resolveExternalUrl(url);
+    const match = resolved.match(/^data:[^;]+;base64,(.+)$/);
+    if (match) return Buffer.from(match[1], 'base64');
+
+    const response = await fetch(resolved);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   /** Path to local uploads dir (for serving static files). */
   getLocalUploadsPath(): string | null {
     return this.useLocal ? this.localDir : null;

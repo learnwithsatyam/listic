@@ -4,6 +4,7 @@ import { ImagesController } from './images.controller';
 import { ImagesService } from './images.service';
 import { ImagenService } from './imagen.service';
 import { ImageProcessingService } from './image-processing.service';
+import { WatermarkService } from './watermark.service';
 import {
   ImageProject,
   GeneratedImage,
@@ -20,7 +21,12 @@ import { PlatformsModule } from '../platforms/platforms.module';
     PlatformsModule,
   ],
   controllers: [ImagesController],
-  providers: [ImagesService, ImagenService, ImageProcessingService],
-  exports: [ImagesService],
+  providers: [
+    ImagesService,
+    ImagenService,
+    ImageProcessingService,
+    WatermarkService,
+  ],
+  exports: [ImagenService, ImageProcessingService, WatermarkService, ImagesService],
 })
 export class ImagesModule {}
