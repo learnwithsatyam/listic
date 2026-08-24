@@ -7,14 +7,13 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  Share,
   Platform,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { imagesApi } from '../../src/services/api';
 import { showAlert } from '../../src/utils/alert';
+import { downloadImage } from '../../src/utils/download';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { colors, spacing, radii, fontSize, fontWeight, layout } from '../../src/theme';
 
@@ -80,29 +79,10 @@ export default function ResultsScreen() {
 
   const handleDownload = async (img: GeneratedImage) => {
     try {
-      if (Platform.OS === 'web') {
-        const token = (await import('../../src/stores/auth-store')).useAuthStore.getState().token;
-        const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
-        const response = await fetch(`${API_BASE_URL}/images/download/${img.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) throw new Error('Download failed');
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `listic_${img.imageType}_${img.id}.png`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        return;
-      }
-
-      const filename = `listic_${img.imageType}_${img.id}.png`;
-      const fileUri = `${FileSystem.documentDirectory}${filename}`;
-      await FileSystem.downloadAsync(img.imageUrl, fileUri);
-      await Share.share({ url: fileUri });
+      await downloadImage(
+        `/images/download/${img.id}`,
+        `listic_${img.imageType}_${img.id}.png`,
+      );
     } catch {
       showAlert('Download Failed', 'Could not download the image. Please try again.');
     }

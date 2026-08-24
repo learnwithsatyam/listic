@@ -62,6 +62,15 @@ export default function HomeScreen() {
 
             <Pressable
               style={[styles.card, isDesktop && styles.cardDesktop]}
+              onPress={() => router.push('/(tabs)/studio')}
+            >
+              <Ionicons name="restaurant-outline" size={28} color={colors.textSecondary} />
+              <Text style={styles.cardTitle}>Food Studio</Text>
+              <Text style={styles.cardDesc}>One background, every dish</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.card, isDesktop && styles.cardDesktop]}
               onPress={() => router.push('/(tabs)/projects')}
             >
               <Ionicons name="time-outline" size={28} color={colors.textSecondary} />
@@ -170,6 +179,7 @@ const styles = StyleSheet.create({
   },
   cardGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
     marginBottom: spacing['3xl'],
   },
@@ -177,7 +187,8 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   card: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 150,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.xl,

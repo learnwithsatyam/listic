@@ -55,6 +55,26 @@ export class ImageProcessingService {
     return outputBuffer;
   }
 
+  /**
+   * Resize a full-bleed social image (e.g. a food dish already composed onto a
+   * background) to exact dimensions.
+   *
+   * Unlike processForPlatform this never trims or pads: the frame is edge-to-edge
+   * artwork, so it is cover-cropped around the most salient region instead.
+   */
+  async processForSocial(
+    inputBuffer: Buffer,
+    target: { width: number; height: number },
+  ): Promise<Buffer> {
+    return sharp(inputBuffer)
+      .resize(target.width, target.height, {
+        fit: 'cover',
+        position: sharp.strategy.attention,
+      })
+      .png({ compressionLevel: 6 })
+      .toBuffer();
+  }
+
   /** Trim surrounding whitespace from the image. */
   private async trimWhitespace(buffer: Buffer): Promise<Buffer> {
     try {

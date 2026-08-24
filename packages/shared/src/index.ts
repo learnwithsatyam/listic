@@ -46,6 +46,73 @@ export interface ImageProject {
   updatedAt: string;
 }
 
+// ---- Food Studio Types ----
+export type StudioFormatSlug = 'square' | 'portrait' | 'story' | 'landscape';
+
+export interface StudioFormat {
+  slug: StudioFormatSlug;
+  name: string;
+  aspect: string;
+  width: number;
+  height: number;
+  description: string;
+}
+
+export type BackgroundSource = 'uploaded' | 'generated';
+
+export interface StudioBackground {
+  id: string;
+  userId: string;
+  name: string;
+  source: BackgroundSource;
+  prompt?: string;
+  imageUrl: string;
+  width: number;
+  height: number;
+  createdAt: string;
+}
+
+export interface FoodShot {
+  id: string;
+  shootId: string;
+  dishName: string;
+  sourceImageUrl: string;
+  resultImageUrl?: string;
+  status: ProjectStatus;
+  errorMessage?: string;
+  width: number;
+  height: number;
+  createdAt: string;
+}
+
+export interface FoodShoot {
+  id: string;
+  userId: string;
+  name: string;
+  format: StudioFormatSlug;
+  stylePrompt?: string;
+  status: ProjectStatus;
+  errorMessage?: string;
+  background: StudioBackground;
+  shots: FoodShot[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateBackgroundRequest {
+  prompt: string;
+  name?: string;
+  format?: StudioFormatSlug;
+}
+
+export interface CreateShootRequest {
+  backgroundId: string;
+  name: string;
+  format?: StudioFormatSlug;
+  stylePrompt?: string;
+  dishNames: string[];
+}
+
 // ---- Auth Types ----
 export interface AuthResponse {
   accessToken: string;

@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { ImageProject, GeneratedImage } from './entities/image-project.entity';
 import { ImagenService } from './imagen.service';
 import { ImageProcessingService } from './image-processing.service';
+import { WatermarkService } from './watermark.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { PlatformsService } from '../platforms/platforms.service';
@@ -25,6 +26,7 @@ export class ImagesService {
     private readonly generatedImageRepo: Repository<GeneratedImage>,
     private readonly imagenService: ImagenService,
     private readonly imageProcessingService: ImageProcessingService,
+    private readonly watermarkService: WatermarkService,
     private readonly storageService: StorageService,
     private readonly usersService: UsersService,
     private readonly platformsService: PlatformsService,
@@ -111,15 +113,15 @@ export class ImagesService {
           }),
         );
 
-        const storedUrl = await this.storageService.uploadFromUrl(
-          resultUrl,
-          `generated/${userId}/${project.id}`,
-        );
+        // Strip generator badges and provenance metadata before the image is
+        // stored anywhere — nothing downstream should ever see a Gemini mark.
+        const cleanBuffer = await this.watermarkService.sanitizeDataUri(resultUrl);
 
         const specs = this.platformsService.getSpecs(primaryPlatform);
 
         // Post-process: resize and optimize for platform compliance
-        const processedBuffer = await this.postProcessImage(storedUrl, specs);
+        const processedBuffer =
+          await this.imageProcessingService.processForPlatform(cleanBuffer, specs);
         const finalUrl = await this.storageService.uploadBuffer(
           processedBuffer,
           `processed/${userId}/${project.id}`,
@@ -179,14 +181,7 @@ export class ImagesService {
     if (image.project.userId !== userId)
       throw new ForbiddenException('Not your image');
 
-    const resolved = await this.storageService.resolveExternalUrl(image.imageUrl);
-    if (resolved.startsWith('data:')) {
-      const match = resolved.match(/^data:[^;]+;base64,(.+)$/);
-      if (!match) throw new Error('Invalid data URI');
-      return Buffer.from(match[1], 'base64');
-    }
-    const res = await fetch(resolved);
-    return Buffer.from(await res.arrayBuffer());
+    return this.storageService.readAsBuffer(image.imageUrl);
   }
 
   private getImageTypes(isWearable: boolean): string[] {
@@ -197,29 +192,6 @@ export class ImagesService {
       types.push('angle');
     }
     return types.slice(0, 6);
-  }
-
-  /**
-   * Download a stored image and run it through platform-specific
-   * post-processing (resize, background, optimize).
-   */
-  private async postProcessImage(
-    imageUrl: string,
-    specs: import('../platforms/platform-specs').PlatformSpec,
-  ): Promise<Buffer> {
-    const resolved = await this.storageService.resolveExternalUrl(imageUrl);
-    let buffer: Buffer;
-
-    if (resolved.startsWith('data:')) {
-      const match = resolved.match(/^data:[^;]+;base64,(.+)$/);
-      if (!match) throw new Error('Invalid data URI');
-      buffer = Buffer.from(match[1], 'base64');
-    } else {
-      const res = await fetch(resolved);
-      buffer = Buffer.from(await res.arrayBuffer());
-    }
-
-    return this.imageProcessingService.processForPlatform(buffer, specs);
   }
 
   /** Retry with exponential backoff on 429 rate-limit responses. */

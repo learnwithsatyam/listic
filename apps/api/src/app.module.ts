@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ImagesModule } from './images/images.module';
+import { StudioModule } from './studio/studio.module';
 import { StorageModule } from './storage/storage.module';
 import { PlatformsModule } from './platforms/platforms.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -42,6 +43,7 @@ import { AdminModule } from './admin/admin.module';
     AuthModule,
     UsersModule,
     ImagesModule,
+    StudioModule,
     StorageModule,
     PlatformsModule,
     PaymentsModule,
